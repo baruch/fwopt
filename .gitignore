@@ -1,3 +1,7 @@
 .*.swp
 *.o
 fwopt
+lex.yy.c
+parser.tab.[hc]
+parser.output
+tests/*.res

@@ -4,19 +4,13 @@
 #include <string.h>
 #include <stdarg.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <glib.h>
 
 #define IFACE_LEN 16
 #define CHAIN_LEN 32
 
-typedef enum RuleAction {
-	RULE_ACCEPT,
-	RULE_DROP,
-	RULE_REJECT,
-	RULE_JUMP,
-} RuleAction;
-
-typedef struct Rule
+struct Rule
 {
 	struct Rule *next;
 
@@ -29,7 +23,7 @@ typedef struct Rule
 	uint16_t dst_port;
 	RuleAction action;
 	char jump_chain[CHAIN_LEN];
-} Rule;
+};
 
 typedef struct Chain
 {
@@ -69,7 +63,7 @@ static void rules_init_chains(RuleTree *rule_tree)
 	rule_tree->forward = rules_new_chain(rule_tree, "FORWARD");
 }
 
-static RuleTree *rules_init(const void *ctx)
+RuleTree *rules_init(const void *ctx)
 {
 	RuleTree *rule_tree = talloc_zero(ctx, struct RuleTree);
 	rules_init_chains(rule_tree);
@@ -92,7 +86,7 @@ static void rules_clear(RuleTree *tree)
 	rules_init_chains(tree);
 }
 
-Chain *rules_get_chain(RuleTree *tree, const char *name)
+static Chain *rules_get_chain(RuleTree *tree, const char *name)
 {
 	int i;
 	for (i=0; i < tree->num_chains; i++) {
@@ -110,57 +104,136 @@ static void chain_add_rule(Chain *chain, Rule *rule)
 	chain->tail = &rule->next;
 }
 
-int rules_append_rule(RuleTree *tree, const char *chain_name, const char *if_in, const char *if_out,
-		uint8_t proto, uint32_t src_addr, uint32_t dst_addr, uint16_t src_port, uint16_t dst_port,
-		RuleAction action)
+int rules_append_rule(RuleTree *tree, const char *chain_name, Rule *rule)
 {
 	Chain *chain = rules_get_chain(tree, chain_name);
 	if (!chain) {
-		fprintf(stderr, "Can't find chain %s\n", chain_name);
+		fprintf(stderr, "Can't find chain '%s'\n", chain_name);
 		return -1;
 	}
 
-	Rule *rule = talloc_zero(chain, Rule);
-	if (if_in)
-		strncpy(rule->if_in, if_in, IFACE_LEN);
-	if (if_out)
-		strncpy(rule->if_out, if_out, IFACE_LEN);
-	rule->proto = proto;
-	rule->src_addr = src_addr;
-	rule->dst_addr = dst_addr;
-	rule->src_port = src_port;
-	rule->dst_port = dst_port;
-	rule->action = action;
-
 	chain_add_rule(chain, rule);
-
 	return 0;
 }
 
-RuleTree *rules_input(const void *ctx)
+Rule *rule_init(void)
 {
-	RuleTree *tree = rules_init(ctx);
-
-	/* For now we will insert here a static rule tree to optimize */
-	rules_append_rule(tree, "INPUT", "eth0", NULL, IPPROTO_TCP, 0, 0, 0, 22, RULE_ACCEPT);
-	rules_append_rule(tree, "INPUT", "eth0", NULL, IPPROTO_TCP, 0, 0, 0, 80, RULE_ACCEPT);
-	rules_append_rule(tree, "INPUT", "eth0", NULL, IPPROTO_UDP, 0, 0, 0, 53, RULE_ACCEPT);
-	rules_append_rule(tree, "INPUT", "eth0", NULL, IPPROTO_UDP, 0, 0, 0, 91, RULE_ACCEPT);
-
-	return tree;
+	Rule *rule = talloc_zero(NULL, Rule);
+	return rule;
 }
 
-void rule_start(void)
+int rule_set_iface_in(Rule *rule, const char *iface)
+{
+	if (rule->if_in[0])
+		return -1;
+
+	strncpy(rule->if_in, iface, IFACE_LEN);
+	return 0;
+}
+
+int rule_set_iface_out(Rule *rule, const char *iface)
+{
+	if (rule->if_out[0])
+		return -1;
+
+	strncpy(rule->if_out, iface, IFACE_LEN);
+	return 0;
+}
+
+int rule_set_proto_num(Rule *rule, uint8_t proto)
+{
+	if (rule->proto)
+		return -1;
+
+	rule->proto = proto;
+	return 0;
+}
+
+int rule_set_proto_name(Rule *rule, const char *proto_name)
+{
+	if (!proto_name || !*proto_name)
+		return -1;
+
+	if (proto_name[0] >= '0' && proto_name[0] <= '9') {
+		/* A number */
+		char *endptr = NULL;
+		long int proto = strtol(proto_name, &endptr, 0);
+		if (*endptr != '\0')
+			return -1;
+		if (proto < 0 || proto > 255)
+			return -1;
+		return rule_set_proto_num(rule, proto);
+	} else {
+		struct protoent *proto = getprotobyname(proto_name);
+		if (!proto)
+			return -1;
+		return rule_set_proto_num(rule, proto->p_proto);
+	}
+}
+
+int rule_set_addr_src(Rule *rule, uint32_t src)
+{
+	if (rule->src_addr)
+		return -1;
+	rule->src_addr = src;
+	return 0;
+}
+
+int rule_set_addr_dst(Rule *rule, uint32_t dst)
+{
+	if (rule->dst_addr)
+		return -1;
+	rule->dst_addr = dst;
+	return 0;
+}
+
+int rule_set_port_src(Rule *rule, uint16_t src_port)
+{
+	if (rule->src_port || (rule->proto != 6 && rule->proto != 17))
+		return -1;
+	rule->src_port = src_port;
+	return 0;
+}
+
+int rule_set_port_dst(Rule *rule, uint16_t dst_port)
+{
+	if (rule->dst_port || (rule->proto != 6 && rule->proto != 17))
+		return -1;
+	rule->dst_port = dst_port;
+	return 0;
+}
+
+int rule_set_action_name(Rule *rule, const char *action)
+{
+	if (rule->action != RULE_NOT_SET || !action)
+		return -1;
+
+	if (strcmp(action, "ACCEPT") == 0)
+		rule->action = RULE_ACCEPT;
+	else if (strcmp(action, "DROP") == 0)
+		rule->action = RULE_DROP;
+	else if (strcmp(action, "REJECT") == 0)
+		rule->action = RULE_REJECT;
+	else if (strcmp(action, "RETURN") == 0)
+		return -1;
+	else {
+		rule->action = RULE_JUMP;
+		strncpy(rule->jump_chain, action, sizeof(rule->jump_chain));
+	}
+	return 0;
+}
+
+static void rule_start(void)
 {
 	printf("iptables");
 }
 
-void rule_end(void)
+static void rule_end(void)
 {
 	printf("\n");
 }
 
-void rule_mid(const char *fmt, ...)
+static void rule_mid(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
@@ -176,12 +249,13 @@ static const char *action_name(RuleAction action, const char *chain_name)
 		case RULE_DROP: return "DROP";
 		case RULE_REJECT: return "REJECT";
 		case RULE_JUMP: return chain_name;
+		case RULE_NOT_SET: return "NOT_SET";
 	}
 
 	return "UNKNOWN";
 }
 
-void rule_output(const char *chain_name, Rule *rule)
+static void rule_output(const char *chain_name, Rule *rule)
 {
 	rule_start();
 	rule_mid("-A %s", chain_name);
@@ -208,7 +282,7 @@ void rule_output(const char *chain_name, Rule *rule)
 	rule_end();
 }
 
-void chain_output(Chain *chain, int create_chain)
+static void chain_output(Chain *chain, int create_chain)
 {
 	Rule *rule;
 
@@ -237,12 +311,6 @@ void rules_output(RuleTree *rule_tree)
 	chain_output(rule_tree->output, 0);
 	chain_output(rule_tree->forward, 0);
 }
-
-void rules_destroy(RuleTree *rule_tree)
-{
-	talloc_free(rule_tree);
-}
-
 
 
 /*********************************** Optimizer ***************************/
