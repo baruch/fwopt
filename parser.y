@@ -70,6 +70,7 @@ static int options_into_rule(Rule *rule, Option *head)
 		case T_OPT_SRC_IP:
 			rule_set_addr_src(rule, tmp->u.ip);
 			break;
+		case T_OPT_DST_IP: rule_set_addr_dst(rule, tmp->u.ip); break;
 		case T_OPT_DST_PORT:
 			rule_set_port_dst(rule, tmp->u.port);
 			break;
@@ -92,7 +93,7 @@ static int options_into_rule(Rule *rule, Option *head)
 %token T_OPT_APPEND T_OPT_NEW_CHAIN T_OPT_DELETE_CHAIN T_OPT_FLUSH
 %token T_OPT_JUMP
 %token T_OPT_IFACE_IN
-%token T_OPT_SRC_IP
+%token T_OPT_SRC_IP T_OPT_DST_IP
 %token T_OPT_DST_PORT
 %token<name> T_NAME
 %token<num> T_NUMBER
@@ -185,6 +186,8 @@ option
 	T_OPT_IFACE_IN T_NAME { $$ = option_init_name(T_OPT_IFACE_IN, $2); }
 |
 	T_OPT_SRC_IP T_IP/*ipmask*/ { $$ = option_init_ip(T_OPT_SRC_IP, $2); }
+|
+	T_OPT_DST_IP T_IP { $$ = option_init_ip(T_OPT_DST_IP, $2); }
 |
 	T_OPT_DST_PORT T_NUMBER { $$ = option_init_port(T_OPT_DST_PORT, $2); }
 ;
