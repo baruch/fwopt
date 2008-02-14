@@ -1,5 +1,6 @@
 - Version 0.1
-  - Read input from file
+  c Read input from file
+    # Reads input from stdin, good enough for now
   - Implement test suite
     - Test drop rule between accept rules
     - Test multiple interfaces being grouped into different groups
