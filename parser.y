@@ -12,38 +12,53 @@ int yylex();
 struct Option {
 	struct Option *next;
 	int code;
+	enum {
+		OPT_NAME,
+		OPT_IP,
+		OPT_PORT,
+		OPT_U32,
+	} type;
 	union {
 		char *name;
+		uint32_t u32;
 		uint32_t ip;
 		uint16_t port;
 	} u;
 };
 
-static Option *option_init(int code)
+static Option *option_init(int code, int type)
 {
 	Option *opt = talloc_zero(NULL, Option);
 	opt->code = code;
+	opt->type = type;
 	return opt;
 }
 
 static Option *option_init_name(int code, const char *name)
 {
-	Option *opt = option_init(code);
+	Option *opt = option_init(code, OPT_NAME);
 	opt->u.name = talloc_strdup(opt, name);
 	return opt;
 }
 
 static Option *option_init_ip(int code, uint32_t ip)
 {
-	Option *opt = option_init(code);
+	Option *opt = option_init(code, OPT_IP);
 	opt->u.ip = ip;
 	return opt;
 }
 
 static Option *option_init_port(int code, uint16_t port)
 {
-	Option *opt = option_init(code);
+	Option *opt = option_init(code, OPT_PORT);
 	opt->u.port = port;
+	return opt;
+}
+
+static Option *option_init_u32(int code, uint32_t u32)
+{
+	Option *opt = option_init(code, OPT_U32);
+	opt->u.u32 = u32;
 	return opt;
 }
 
@@ -64,15 +79,20 @@ static int options_into_rule(Rule *rule, Option *head)
 
 	for (tmp = head; tmp; tmp = tmp->next) {
 		switch (tmp->code) {
-		case T_OPT_IFACE_IN:
-			rule_set_iface_in(rule, tmp->u.name);
+		case T_OPT_IFACE_IN: ret = rule_set_iface_in(rule, tmp->u.name); break;
+		case T_OPT_SRC_IP: ret = rule_set_addr_src(rule, tmp->u.ip);break;
+		case T_OPT_DST_IP: ret = rule_set_addr_dst(rule, tmp->u.ip); break;
+		case T_OPT_DST_PORT: ret = rule_set_port_dst(rule, tmp->u.port); break;
+		case T_OPT_SRC_PORT: ret = rule_set_port_src(rule, tmp->u.port); break;
+		case T_OPT_PROTO:
+			if (tmp->type == OPT_NAME)
+				ret = rule_set_proto_name(rule, tmp->u.name);
+			else
+				ret = rule_set_proto_num(rule, tmp->u.u32);
 			break;
-		case T_OPT_SRC_IP:
-			rule_set_addr_src(rule, tmp->u.ip);
-			break;
-		case T_OPT_DST_IP: rule_set_addr_dst(rule, tmp->u.ip); break;
-		case T_OPT_DST_PORT:
-			rule_set_port_dst(rule, tmp->u.port);
+		default:
+			fprintf(stderr, "Unknown option code %d\n", tmp->code);
+			ret = -1;
 			break;
 		}
 	}
@@ -94,7 +114,7 @@ static int options_into_rule(Rule *rule, Option *head)
 %token T_OPT_JUMP
 %token T_OPT_IFACE_IN
 %token T_OPT_SRC_IP T_OPT_DST_IP
-%token T_OPT_DST_PORT
+%token T_OPT_PROTO T_OPT_SRC_PORT T_OPT_DST_PORT
 %token<name> T_NAME
 %token<num> T_NUMBER
 %token T_SLASH
@@ -146,11 +166,9 @@ command
 			YYABORT;
 		}
 		if (options_into_rule(rule, $3)) {
-			fprintf(stderr, "Error setting options\n");
 			YYABORT;
 		}
 		if (options_into_rule(rule, $6)) {
-			fprintf(stderr, "Error setting options\n");
 			YYABORT;
 		}
 		rules_append_rule(tree, $2, rule);
@@ -188,6 +206,12 @@ option
 	T_OPT_SRC_IP T_IP/*ipmask*/ { $$ = option_init_ip(T_OPT_SRC_IP, $2); }
 |
 	T_OPT_DST_IP T_IP { $$ = option_init_ip(T_OPT_DST_IP, $2); }
+|
+	T_OPT_PROTO T_NAME { $$ = option_init_name(T_OPT_PROTO, $2); }
+|
+	T_OPT_PROTO T_NUMBER { $$ = option_init_u32(T_OPT_PROTO, $2); }
+|
+	T_OPT_SRC_PORT T_NUMBER { $$ = option_init_port(T_OPT_SRC_PORT, $2); }
 |
 	T_OPT_DST_PORT T_NUMBER { $$ = option_init_port(T_OPT_DST_PORT, $2); }
 ;

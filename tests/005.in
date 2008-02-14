@@ -1,0 +1,1 @@
+-A INPUT --source-port 1900 -j DROP

@@ -190,16 +190,28 @@ int rule_set_addr_dst(Rule *rule, uint32_t dst)
 
 int rule_set_port_src(Rule *rule, uint16_t src_port)
 {
-	if (rule->src_port || (rule->proto != 6 && rule->proto != 17))
+	if (rule->src_port) {
+		fprintf(stderr, "Setting source port but it is already set\n");
 		return -1;
+	}
+	if (rule->proto != 6 && rule->proto != 17) {
+		fprintf(stderr, "Setting source port but protocol is not udp nor tcp\n");
+		return -1;
+	}
 	rule->src_port = src_port;
 	return 0;
 }
 
 int rule_set_port_dst(Rule *rule, uint16_t dst_port)
 {
-	if (rule->dst_port || (rule->proto != 6 && rule->proto != 17))
+	if (rule->dst_port) {
+		fprintf(stderr, "Setting source port but it is already set\n");
 		return -1;
+	}
+	if (rule->proto != 6 && rule->proto != 17) {
+		fprintf(stderr, "Setting dest port but protocol is not udp nor tcp\n");
+		return -1;
+	}
 	rule->dst_port = dst_port;
 	return 0;
 }
