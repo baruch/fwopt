@@ -1,0 +1,18 @@
+- Version 0.1
+  - Read input from file
+  - Implement test suite
+    - Test drop rule between accept rules
+    - Test multiple interfaces being grouped into different groups
+  - Fix bugs detected in the test suite
+  - Proof of concept is ready
+
+- Version 0.2
+  - Read "jump to chain" rules
+  - Inline such chains into one big initial group
+  - Group rules on
+    - Output interface
+    - source ip
+    - dest ip
+    - protocol
+    - source port
+    - dest port
