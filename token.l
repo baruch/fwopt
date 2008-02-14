@@ -34,6 +34,7 @@ word          {letter}+({number}|\+)?
 "-s"          { return T_OPT_SRC_IP; }
 "--src"       { return T_OPT_SRC_IP; }
 "--dport"     { return T_OPT_DST_PORT; }
+"-d"          { return T_OPT_DST_PORT; }
 
 [0-9]+\.[0-9.]+ {
 		struct in_addr addr;

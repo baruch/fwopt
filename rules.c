@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <glib.h>
+#include <arpa/inet.h>
 
 #define IFACE_LEN 16
 #define CHAIN_LEN 32
@@ -265,10 +266,16 @@ static void rule_output(const char *chain_name, Rule *rule)
 	if (rule->if_out[0])
 		rule_mid("-o %s", rule->if_out);
 
-	if (rule->src_addr)
-		rule_mid("-s src_addr");
-	if (rule->dst_addr)
-		rule_mid("-d dst_addr");
+	if (rule->src_addr) {
+		struct in_addr addr;
+		addr.s_addr = htonl(rule->src_addr);
+		rule_mid("--src %s", inet_ntoa(addr));
+	}
+	if (rule->dst_addr) {
+		struct in_addr addr;
+		addr.s_addr = htonl(rule->dst_addr);
+		rule_mid("--dst %s", inet_ntoa(addr));
+	}
 
 	if (rule->proto)
 		rule_mid("-p %d", rule->proto);
