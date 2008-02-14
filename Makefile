@@ -20,9 +20,8 @@ clean:
 	-rm -f $(OBJ) fwopt tests/*.res ${PARSER_OUT} ${TOKEN_OUT}
 
 test: fwopt
-	@for f in tests/*.in; do                   \
-		echo "Test file $$f";                  \
-		./fwopt < $$f > $${f/.in/.res};        \
+	@for f in tests/*.in; do                       \
+		./fwopt < $$f > $${f/.in/.res} 2>&1;   \
 		diff -u $${f/.in/.out} $${f/.in/.res}; \
 	done
 
