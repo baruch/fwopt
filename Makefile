@@ -6,14 +6,14 @@ LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
 fwopt: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^
 
-parser.tab.o: parser.tab.c parser.tab.h rules.h parser.h parser.int.h
+parser.tab.o: parser.tab.c parser.tab.h rules.h parser.h parser.int.h Makefile
 PARSER_OUT=parser.tab.c parser.tab.h parser.output
-${PARSER_OUT}: parser.y
+${PARSER_OUT}: parser.y Makefile
 	bison -t -v -d $<
 
-lex.yy.o: lex.yy.c parser.tab.h parser.int.h rules.h
+lex.yy.o: lex.yy.c parser.tab.h parser.int.h rules.h Makefile
 TOKEN_OUT=lex.yy.c
-${TOKEN_OUT}: token.l
+${TOKEN_OUT}: token.l Makefile
 	flex $<
 
 clean:
@@ -27,5 +27,5 @@ test: fwopt
 
 .PHONY: clean test
 
-main.o: main.c rules.h
-rules.o: rules.c rules.h
+main.o: main.c rules.h parser.h Makefile
+rules.o: rules.c rules.h Makefile
