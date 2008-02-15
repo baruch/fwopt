@@ -1,6 +1,6 @@
 SRC=main.c rules.c parser.tab.c lex.yy.c
 OBJ=$(SRC:%.c=%.o)
-CFLAGS=-g -Wall -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0)
+CFLAGS=-g -Wall -Werror -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0)
 LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
 
 fwopt: $(OBJ)
