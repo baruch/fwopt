@@ -7,30 +7,22 @@
 #define _GNU_SOURCE
 #include <getopt.h>
 
+static int leak_check = 0;
+
 int main(int argc, char * const argv[])
 {
-	int leak_check = 0;
-	int c;
-
 	while (1) {
-		int option_index = 0;
-
-		static struct option long_options[] = {
-			{"leak-check", 0, 0, 0},
-			{"full-leak-check", 0, 0, 0},
+		static const struct option long_options[] = {
+			{"leak-check", 0, &leak_check, 1},
+			{"full-leak-check", 0, &leak_check, 2},
+			{0, 0, 0, 0}
 		};
 
-		c = getopt_long(argc, argv, "", long_options, &option_index);
+		int c = getopt_long(argc, argv, "", long_options, NULL);
 		if (c == -1)
 			break;
 		switch (c) {
-		case 0:
-			switch (option_index) {
-			case 0: leak_check = 1; break;
-			case 1: leak_check = 2; break;
-			default: fprintf(stderr, "Unknown long option %d\n", option_index); exit(1); break;
-			}
-			break;
+		case 0: break; /* Options with flags reach here */
 		default:
 			fprintf(stderr, "unknown option %d\n", c);
 			exit(1);
