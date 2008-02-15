@@ -157,21 +157,10 @@ int rule_set_proto_name(Rule *rule, const char *proto_name)
 	if (!proto_name || !*proto_name)
 		return -1;
 
-	if (proto_name[0] >= '0' && proto_name[0] <= '9') {
-		/* A number */
-		char *endptr = NULL;
-		long int proto = strtol(proto_name, &endptr, 0);
-		if (*endptr != '\0')
-			return -1;
-		if (proto < 0 || proto > 255)
-			return -1;
-		return rule_set_proto_num(rule, proto);
-	} else {
-		struct protoent *proto = getprotobyname(proto_name);
-		if (!proto)
-			return -1;
-		return rule_set_proto_num(rule, proto->p_proto);
-	}
+	struct protoent *proto = getprotobyname(proto_name);
+	if (!proto)
+		return -1;
+	return rule_set_proto_num(rule, proto->p_proto);
 }
 
 int rule_set_addr_src(Rule *rule, uint32_t src)
@@ -291,8 +280,13 @@ static void rule_output(const char *chain_name, Rule *rule)
 		rule_mid("--dst %s", inet_ntoa(addr));
 	}
 
-	if (rule->proto)
-		rule_mid("-p %d", rule->proto);
+	if (rule->proto) {
+		struct protoent *proto = getprotobynumber(rule->proto);
+		if (!proto)
+			rule_mid("-p %d", rule->proto);
+		else
+			rule_mid("-p %s", proto->p_name);
+	}
 	if (rule->src_port)
 		rule_mid("--sport %d", rule->src_port);
 	if (rule->dst_port)
