@@ -243,5 +243,5 @@ static void yyerror(RuleTree *tree, const char *msg)
 	int i;
 	for (i = 0; i < lex_idx; i++)
 		fprintf(stderr, " ");
-	fprintf(stderr, "^");
+	fprintf(stderr, "^\n");
 }
