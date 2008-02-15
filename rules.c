@@ -372,6 +372,7 @@ static Group *chain_to_group(RuleTree *rule_tree, Chain *chain)
 
 		/* Add the rule into this group */
 		Rule *newrule = talloc_memdup(group, rule, sizeof(*rule));
+		newrule->next = NULL;
 		*group->last_rule = newrule;
 		group->last_rule = &newrule->next;
 	}
@@ -453,6 +454,14 @@ void optimize_group(Group *group)
 	}
 }
 
+void optimize_groups(Group *head)
+{
+	Group *tmp;
+
+	for (tmp = head; tmp; tmp = tmp->next)
+		optimize_group(tmp);
+}
+
 void group_to_chains(Group *group, RuleTree *tree, Chain *base_chain);
 
 void group_rule_to_chain(GroupRule *grule, RuleTree *tree, Chain *base_chain)
@@ -493,6 +502,13 @@ void group_to_chains(Group *group, RuleTree *tree, Chain *base_chain)
 		group_rule_to_chain(grule, tree, base_chain);
 }
 
+void groups_to_chains(Group *head, RuleTree *tree, Chain *base_chain)
+{
+	Group *tmp;
+	for (tmp = head; tmp; tmp = tmp->next)
+		group_to_chains(tmp, tree, base_chain);
+}
+
 void rules_optimize(RuleTree *rule_tree)
 {
 	/* Create the new groups */
@@ -504,15 +520,15 @@ void rules_optimize(RuleTree *rule_tree)
 	rules_clear(rule_tree);
 
 	/* Optimize and render groups into rules */
-	optimize_group(input_group);
-	group_to_chains(input_group, rule_tree, rule_tree->input);
+	optimize_groups(input_group);
+	groups_to_chains(input_group, rule_tree, rule_tree->input);
 	talloc_free(input_group);
 	
-	optimize_group(output_group);
-	group_to_chains(output_group, rule_tree, rule_tree->output);
+	optimize_groups(output_group);
+	groups_to_chains(output_group, rule_tree, rule_tree->output);
 	talloc_free(output_group);
 
-	optimize_group(forward_group);
-	group_to_chains(forward_group, rule_tree, rule_tree->forward);
+	optimize_groups(forward_group);
+	groups_to_chains(forward_group, rule_tree, rule_tree->forward);
 	talloc_free(forward_group);
 }
