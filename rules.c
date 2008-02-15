@@ -103,6 +103,8 @@ static void chain_add_rule(Chain *chain, Rule *rule)
 	/* Add to the end of the chain linked list */
 	*chain->tail = rule;
 	chain->tail = &rule->next;
+
+	talloc_reference(chain, rule);
 }
 
 int rules_append_rule(RuleTree *tree, const char *chain_name, Rule *rule)
