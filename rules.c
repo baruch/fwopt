@@ -342,6 +342,7 @@ typedef struct Group {
 	struct Group *next;
 	RuleAction action;
 	Rule *rules;
+	Rule **last_rule;
 	struct GroupRule *groups;
 } Group;
 
@@ -368,6 +369,7 @@ static Group *chain_to_group(RuleTree *rule_tree, Chain *chain)
 		if (!can_merge_group_and_rule(group, rule)) {
 			group = talloc_zero(head, Group);
 			group->action = rule->action;
+			group->last_rule = &group->rules;
 
 			/* Link the group into the list */
 			*next = group;
@@ -376,8 +378,8 @@ static Group *chain_to_group(RuleTree *rule_tree, Chain *chain)
 
 		/* Add the rule into this group */
 		Rule *newrule = talloc_memdup(group, rule, sizeof(*rule));
-		newrule->next = group->rules;
-		group->rules = newrule;
+		*group->last_rule = newrule;
+		group->last_rule = &newrule->next;
 	}
 
 	return head;
