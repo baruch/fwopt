@@ -414,6 +414,8 @@ void optimize_group(Group *group)
 	GTree *tree_itf_in = g_tree_new_with_data((GCompareDataFunc)strncmp, GUINT_TO_POINTER(IFACE_LEN));
 	Rule *rule;
 	for (rule = group->rules; rule; rule = rule->next) {
+		if (!*rule->if_in)
+			continue;
 		gpointer value = g_tree_lookup(tree_itf_in, rule->if_in);
 		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
 		g_tree_insert(tree_itf_in, rule->if_in, GUINT_TO_POINTER(uval+1));
