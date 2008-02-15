@@ -10,6 +10,7 @@ int main()
 	RuleTree *rule_tree = rules_init(ctx);
 
 	int res = yyparse(rule_tree);
+	yylex_destroy();
 	if (res != 0) {
 		fprintf(stderr, "Failed parsing input\n");
 		return 1;
