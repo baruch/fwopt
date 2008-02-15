@@ -38,7 +38,7 @@ static Option *option_init_name(int code, const char *name)
 {
 	Option *opt = option_init(code, OPT_NAME);
 	opt->u.name = name;
-	talloc_reference(opt, name);
+	talloc_steal(opt, name);
 	return opt;
 }
 
@@ -173,6 +173,7 @@ command
 			YYABORT;
 		}
 		rules_append_rule(tree, $2, rule);
+		talloc_unlink(NULL, rule);
 	}
 |
 	T_OPT_NEW_CHAIN T_NAME { printf("New chain %s\n", $2); }
