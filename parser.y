@@ -234,4 +234,14 @@ ipmask
 static void yyerror(RuleTree *tree, const char *msg)
 {
 	fprintf(stderr, "Error: %s\n", msg);
+
+	int ch = lex_line[lex_line_len-1];
+	if (ch == '\r' || ch == '\n')
+		lex_line[lex_line_len-1] = '\0';
+	fprintf(stderr, "%s\n", lex_line);
+
+	int i;
+	for (i = 0; i < lex_idx; i++)
+		fprintf(stderr, " ");
+	fprintf(stderr, "^");
 }

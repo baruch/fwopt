@@ -6,6 +6,31 @@
 
 #include "parser.int.h"
 #include "parser.tab.h"
+
+char lex_line[1024];
+int lex_lineno;
+int lex_idx;
+int lex_line_len;
+
+#define YY_INPUT(buf, result, max_size)                                      \
+	do {                                                                 \
+		while (lex_idx >= lex_line_len) {                            \
+			char *tmp = fgets(lex_line, sizeof(lex_line), yyin); \
+			if (tmp == NULL) {                                   \
+				result = YY_NULL;                            \
+				break; /* exit the while (0) */              \
+			}                                                    \
+			lex_lineno++;                                        \
+			lex_idx = 0;                                         \
+			lex_line_len = strlen(lex_line);                     \
+		}                                                            \
+		if (lex_idx < lex_line_len) {                                \
+			result = 1;                                          \
+			buf[0] = lex_line[lex_idx++];                        \
+		} else                                                       \
+			result = YY_NULL;                                    \
+	} while(0)
+
 %}
 
 %option noyywrap
