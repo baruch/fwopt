@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <talloc.h>
 
 #include "parser.int.h"
 #include "parser.tab.h"
@@ -55,6 +56,6 @@ word          {letter}+({number}|\+)?
                 return T_IP;
               }
 {number}      { sscanf(yytext, "%u", &yylval.num); return T_NUMBER; }
-{word}        { yylval.name = strdup(yytext); return T_NAME; }
+{word}        { yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
 {newline}     { return T_EOL; }
 

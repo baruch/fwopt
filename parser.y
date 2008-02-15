@@ -19,7 +19,7 @@ struct Option {
 		OPT_U32,
 	} type;
 	union {
-		char *name;
+		const char *name;
 		uint32_t u32;
 		uint32_t ip;
 		uint16_t port;
@@ -37,7 +37,8 @@ static Option *option_init(int code, int type)
 static Option *option_init_name(int code, const char *name)
 {
 	Option *opt = option_init(code, OPT_NAME);
-	opt->u.name = talloc_strdup(opt, name);
+	opt->u.name = name;
+	talloc_reference(opt, name);
 	return opt;
 }
 
