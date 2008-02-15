@@ -56,10 +56,5 @@ int main(int argc, char * const argv[])
 
 	talloc_free(ctx);
 
-	switch (leak_check) {
-	case 1: talloc_report(NULL, stderr); break;
-	case 2: talloc_report_full(NULL, stderr); break;
-	}
-
 	return 0;
 }
