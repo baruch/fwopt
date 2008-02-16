@@ -81,6 +81,7 @@ static int options_into_rule(Rule *rule, Option *head)
 	for (tmp = head; tmp; tmp = tmp->next) {
 		switch (tmp->code) {
 		case T_OPT_IFACE_IN: ret = rule_set_iface_in(rule, tmp->u.name); break;
+		case T_OPT_IFACE_OUT: ret = rule_set_iface_out(rule, tmp->u.name); break;
 		case T_OPT_SRC_IP: ret = rule_set_addr_src(rule, tmp->u.ip);break;
 		case T_OPT_DST_IP: ret = rule_set_addr_dst(rule, tmp->u.ip); break;
 		case T_OPT_DST_PORT: ret = rule_set_port_dst(rule, tmp->u.port); break;
@@ -91,9 +92,18 @@ static int options_into_rule(Rule *rule, Option *head)
 			else
 				ret = rule_set_proto_num(rule, tmp->u.u32);
 			break;
-		default:
-			fprintf(stderr, "Unknown option code %d\n", tmp->code);
+		case T_OPT_MODULE:
+		case T_OPT_STATE:
+		case T_OPT_LOG_LEVEL:
+		case T_OPT_LOG_PREFIX:
+			fprintf(stderr, "Unsupported option %d\n", tmp->code);
+			break;
+		default: {
+			char msg[80];
+			snprintf(msg, sizeof(msg), "Unknown option code %d", tmp->code);
+			yyerror(NULL, msg);
 			ret = -1;
+			}
 			break;
 		}
 	}
@@ -111,17 +121,20 @@ static int options_into_rule(Rule *rule, Option *head)
 	Option *option;
 }
 
-%token T_OPT_APPEND T_OPT_NEW_CHAIN T_OPT_DELETE_CHAIN T_OPT_FLUSH
+%token T_OPT_APPEND T_OPT_NEW_CHAIN T_OPT_DELETE_CHAIN T_OPT_FLUSH T_OPT_POLICY
 %token T_OPT_JUMP
-%token T_OPT_IFACE_IN
+%token T_OPT_IFACE_IN T_OPT_IFACE_OUT
 %token T_OPT_SRC_IP T_OPT_DST_IP
 %token T_OPT_PROTO T_OPT_SRC_PORT T_OPT_DST_PORT
-%token<name> T_NAME
+%token<name> T_NAME T_NAME_COMMA T_QUOTE
 %token<num> T_NUMBER
 %token T_SLASH
 %token<ip> T_IP
 %token T_IPTABLES
 %token T_EOL
+%token T_OPT_MODULE T_OPT_STATE
+%token T_OPT_LOG_LEVEL T_OPT_LOG_PREFIX
+%token T_OPT
 
 %type<option> options
 %type<option> option
@@ -134,7 +147,16 @@ static int options_into_rule(Rule *rule, Option *head)
 
 prog
 :
-	commands done
+	lines done
+;
+
+lines
+:
+	/* empty */
+|
+	line
+|
+	lines T_EOL line
 ;
 
 done
@@ -144,13 +166,11 @@ done
 	T_EOL
 ;
 
-commands
+line
 :
 	/* empty */
 |
 	prefixed_command
-|
-	commands T_EOL prefixed_command
 ;
 
 prefixed_command
@@ -177,6 +197,8 @@ command
 	}
 |
 	T_OPT_NEW_CHAIN T_NAME { printf("New chain %s\n", $2); }
+|
+	T_OPT_POLICY T_NAME T_NAME { printf("Policy for chain %s is %s\n", $2, $3); }
 |
 	T_OPT_FLUSH { printf("Flush all rules\n"); }
 |
@@ -205,6 +227,8 @@ option
 :
 	T_OPT_IFACE_IN T_NAME { $$ = option_init_name(T_OPT_IFACE_IN, $2); }
 |
+	T_OPT_IFACE_OUT T_NAME { $$ = option_init_name(T_OPT_IFACE_OUT, $2); }
+|
 	T_OPT_SRC_IP T_IP/*ipmask*/ { $$ = option_init_ip(T_OPT_SRC_IP, $2); }
 |
 	T_OPT_DST_IP T_IP { $$ = option_init_ip(T_OPT_DST_IP, $2); }
@@ -216,6 +240,14 @@ option
 	T_OPT_SRC_PORT T_NUMBER { $$ = option_init_port(T_OPT_SRC_PORT, $2); }
 |
 	T_OPT_DST_PORT T_NUMBER { $$ = option_init_port(T_OPT_DST_PORT, $2); }
+|
+	T_OPT_MODULE T_NAME { $$ = option_init_name(T_OPT_MODULE, $2); }
+|
+	T_OPT_STATE T_NAME_COMMA { $$ = option_init_name(T_OPT_STATE, $2); }
+|
+	T_OPT_LOG_LEVEL T_NAME { $$ = option_init_name(T_OPT_LOG_LEVEL, $2); }
+|
+	T_OPT_LOG_PREFIX T_QUOTE { $$ = option_init_name(T_OPT_LOG_PREFIX, $2); }
 ;
 
 /*
