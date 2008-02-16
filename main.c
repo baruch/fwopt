@@ -9,7 +9,7 @@
 
 static int leak_check = 0;
 
-int main(int argc, char * const argv[])
+static void parse_args(int argc, char *const argv[])
 {
 	while (1) {
 		static const struct option long_options[] = {
@@ -34,6 +34,11 @@ int main(int argc, char * const argv[])
 		fprintf(stderr, "Unknown extra arguments\n");
 		exit(1);
 	}
+}
+
+int main(int argc, char * const argv[])
+{
+	parse_args(argc, argv);
 
 	switch (leak_check)
 	{
@@ -44,17 +49,17 @@ int main(int argc, char * const argv[])
 	void *ctx = talloc_init("ROOT");
 	RuleTree *rule_tree = rules_init(ctx);
 
+	int main_ret = 0;
 	int res = yyparse(rule_tree);
 	yylex_destroy();
 	if (res != 0) {
 		fprintf(stderr, "Failed parsing input\n");
-		return 1;
+		main_ret = 1;
+	} else {
+		rules_optimize(rule_tree);
+		rules_output(rule_tree);
 	}
 
-	rules_optimize(rule_tree);
-	rules_output(rule_tree);
-
 	talloc_free(ctx);
-
-	return 0;
+	return main_ret;
 }
