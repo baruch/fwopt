@@ -51,7 +51,7 @@ struct RuleTree
 	Chain *chains[NUM_CHAINS];
 };
 
-static Chain *rules_new_chain(RuleTree *tree, const char *name)
+static Chain *rules_new_chain_int(RuleTree *tree, const char *name)
 {
 	if (tree->num_chains >= NUM_CHAINS)
 		return NULL;
@@ -65,11 +65,16 @@ static Chain *rules_new_chain(RuleTree *tree, const char *name)
 	return chain;
 }
 
+int rules_new_chain(RuleTree *tree, const char *name)
+{
+	return rules_new_chain_int(tree, name) != NULL;
+}
+
 static void rules_init_chains(RuleTree *rule_tree)
 {
-	rule_tree->input = rules_new_chain(rule_tree, "INPUT");
-	rule_tree->output = rules_new_chain(rule_tree, "OUTPUT");
-	rule_tree->forward = rules_new_chain(rule_tree, "FORWARD");
+	rule_tree->input = rules_new_chain_int(rule_tree, "INPUT");
+	rule_tree->output = rules_new_chain_int(rule_tree, "OUTPUT");
+	rule_tree->forward = rules_new_chain_int(rule_tree, "FORWARD");
 }
 
 RuleTree *rules_init(const void *ctx)
@@ -536,7 +541,7 @@ void group_rule_to_chain(GroupRule *grule, RuleTree *tree, Chain *base_chain)
 
 	snprintf(chain_name, CHAIN_LEN, "chain_%u", chain_id);
 
-	Chain *chain = rules_new_chain(tree, chain_name);
+	Chain *chain = rules_new_chain_int(tree, chain_name);
 
 	Rule *rule = talloc(base_chain, Rule);
 	memcpy(rule, &grule->rule, sizeof(Rule));

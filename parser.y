@@ -205,11 +205,13 @@ command
 		if (options_into_rule(rule, $6)) {
 			YYABORT;
 		}
-		rules_append_rule(tree, $2, rule);
+		if (rules_append_rule(tree, $2, rule)) {
+			YYABORT;
+		}
 		talloc_unlink(NULL, rule);
 	}
 |
-	T_OPT_NEW_CHAIN T_NAME { printf("New chain %s\n", $2); }
+	T_OPT_NEW_CHAIN T_NAME { rules_new_chain(tree, $2); }
 |
 	T_OPT_POLICY T_NAME T_NAME { printf("Policy for chain %s is %s\n", $2, $3); }
 |
