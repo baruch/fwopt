@@ -19,7 +19,9 @@ struct Rule
 	char if_out[IFACE_LEN];
 	uint8_t proto;
 	uint32_t src_addr;
+	uint32_t src_mask;
 	uint32_t dst_addr;
+	uint32_t dst_mask;
 	uint16_t src_port;
 	uint16_t dst_port;
 	RuleAction action;
@@ -163,19 +165,21 @@ int rule_set_proto_name(Rule *rule, const char *proto_name)
 	return rule_set_proto_num(rule, proto->p_proto);
 }
 
-int rule_set_addr_src(Rule *rule, uint32_t src)
+int rule_set_addr_src(Rule *rule, uint32_t src_addr, uint32_t src_mask)
 {
-	if (rule->src_addr)
+	if (rule->src_mask)
 		return -1;
-	rule->src_addr = src;
+	rule->src_addr = src_addr;
+	rule->src_mask = src_mask;
 	return 0;
 }
 
-int rule_set_addr_dst(Rule *rule, uint32_t dst)
+int rule_set_addr_dst(Rule *rule, uint32_t dst_addr, uint32_t dst_mask)
 {
-	if (rule->dst_addr)
+	if (rule->dst_mask)
 		return -1;
-	rule->dst_addr = dst;
+	rule->dst_addr = dst_addr;
+	rule->dst_mask = dst_mask;
 	return 0;
 }
 
@@ -259,6 +263,22 @@ static const char *action_name(RuleAction action, const char *chain_name)
 	return "UNKNOWN";
 }
 
+static void ipmask_output(const char *prefix, uint32_t addr, uint32_t mask)
+{
+	struct in_addr inaddr;
+	char addr_str[4*4];
+
+	inaddr.s_addr = htonl(addr);
+	strcpy(addr_str, inet_ntoa(inaddr));
+
+	if (mask != 0xFFFFFFFF) {
+		inaddr.s_addr = htonl(mask);
+		rule_mid("%s %s/%s", prefix, addr_str, inet_ntoa(inaddr));
+	} else {
+		rule_mid("%s %s", prefix, addr_str);
+	}
+}
+
 static void rule_output(const char *chain_name, Rule *rule)
 {
 	rule_start();
@@ -269,16 +289,10 @@ static void rule_output(const char *chain_name, Rule *rule)
 	if (rule->if_out[0])
 		rule_mid("-o %s", rule->if_out);
 
-	if (rule->src_addr) {
-		struct in_addr addr;
-		addr.s_addr = htonl(rule->src_addr);
-		rule_mid("--src %s", inet_ntoa(addr));
-	}
-	if (rule->dst_addr) {
-		struct in_addr addr;
-		addr.s_addr = htonl(rule->dst_addr);
-		rule_mid("--dst %s", inet_ntoa(addr));
-	}
+	if (rule->src_mask)
+		ipmask_output("--src", rule->src_addr, rule->src_mask);
+	if (rule->dst_mask)
+		ipmask_output("--dst", rule->dst_addr, rule->dst_mask);
 
 	if (rule->proto) {
 		struct protoent *proto = getprotobynumber(rule->proto);

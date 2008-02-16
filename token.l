@@ -65,6 +65,7 @@ word          {letter}+({number}|\+)?
 
 "#".*         { /* Ignore comments */ }
 {whitespace}  { /* Ignore whitespace */ }
+"/"           { mark_token_start(); return T_SLASH; }
 
 "iptables"    { mark_token_start(); return T_IPTABLES; }
 
@@ -94,6 +95,7 @@ word          {letter}+({number}|\+)?
 "--state"     { mark_token_start(); return T_OPT_STATE; }
 "--log-level" { mark_token_start(); return T_OPT_LOG_LEVEL; }
 "--log-prefix" { mark_token_start(); return T_OPT_LOG_PREFIX; }
+"--syn"       { mark_token_start(); return T_OPT_TCP_SYN; }
 -[-a-zA-Z]+   { mark_token_start(); return T_OPT; }
 
 [0-9]+\.[0-9.]+ { mark_token_start();
@@ -102,7 +104,7 @@ word          {letter}+({number}|\+)?
 		if (ret == 0)
 			REJECT;
 		/* Valid IP address */
-		yylval.ip = ntohl(addr.s_addr);
+		yylval.num = ntohl(addr.s_addr);
                 return T_IP;
               }
 {number}      { mark_token_start(); sscanf(yytext, "%u", &yylval.num); return T_NUMBER; }

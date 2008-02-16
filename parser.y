@@ -13,6 +13,7 @@ struct Option {
 	struct Option *next;
 	int code;
 	enum {
+		OPT_NULL,
 		OPT_NAME,
 		OPT_IP,
 		OPT_PORT,
@@ -21,7 +22,7 @@ struct Option {
 	union {
 		const char *name;
 		uint32_t u32;
-		uint32_t ip;
+		struct ipmask ip;
 		uint16_t port;
 	} u;
 };
@@ -34,6 +35,11 @@ static Option *option_init(int code, int type)
 	return opt;
 }
 
+static Option *option_init_null(int code)
+{
+	return option_init(code, OPT_NULL);
+}
+
 static Option *option_init_name(int code, const char *name)
 {
 	Option *opt = option_init(code, OPT_NAME);
@@ -42,7 +48,7 @@ static Option *option_init_name(int code, const char *name)
 	return opt;
 }
 
-static Option *option_init_ip(int code, uint32_t ip)
+static Option *option_init_ip(int code, struct ipmask ip)
 {
 	Option *opt = option_init(code, OPT_IP);
 	opt->u.ip = ip;
@@ -82,8 +88,8 @@ static int options_into_rule(Rule *rule, Option *head)
 		switch (tmp->code) {
 		case T_OPT_IFACE_IN: ret = rule_set_iface_in(rule, tmp->u.name); break;
 		case T_OPT_IFACE_OUT: ret = rule_set_iface_out(rule, tmp->u.name); break;
-		case T_OPT_SRC_IP: ret = rule_set_addr_src(rule, tmp->u.ip);break;
-		case T_OPT_DST_IP: ret = rule_set_addr_dst(rule, tmp->u.ip); break;
+		case T_OPT_SRC_IP: ret = rule_set_addr_src(rule, tmp->u.ip.addr, tmp->u.ip.mask);break;
+		case T_OPT_DST_IP: ret = rule_set_addr_dst(rule, tmp->u.ip.addr, tmp->u.ip.mask); break;
 		case T_OPT_DST_PORT: ret = rule_set_port_dst(rule, tmp->u.port); break;
 		case T_OPT_SRC_PORT: ret = rule_set_port_src(rule, tmp->u.port); break;
 		case T_OPT_PROTO:
@@ -96,6 +102,7 @@ static int options_into_rule(Rule *rule, Option *head)
 		case T_OPT_STATE:
 		case T_OPT_LOG_LEVEL:
 		case T_OPT_LOG_PREFIX:
+		case T_OPT_TCP_SYN:
 			fprintf(stderr, "Unsupported option %d\n", tmp->code);
 			break;
 		default: {
@@ -116,7 +123,7 @@ static int options_into_rule(Rule *rule, Option *head)
 
 %union {
 	char *name;
-	uint32_t ip;
+	struct ipmask ip;
 	uint32_t num;
 	Option *option;
 }
@@ -129,15 +136,18 @@ static int options_into_rule(Rule *rule, Option *head)
 %token<name> T_NAME T_NAME_COMMA T_QUOTE
 %token<num> T_NUMBER
 %token T_SLASH
-%token<ip> T_IP
+%token<num> T_IP
 %token T_IPTABLES
 %token T_EOL
 %token T_OPT_MODULE T_OPT_STATE
 %token T_OPT_LOG_LEVEL T_OPT_LOG_PREFIX
+%token T_OPT_TCP_SYN
 %token T_OPT
 
 %type<option> options
 %type<option> option
+%type<ip> ipmask
+%type<num> ip
 
 %start prog
 %error-verbose
@@ -229,9 +239,9 @@ option
 |
 	T_OPT_IFACE_OUT T_NAME { $$ = option_init_name(T_OPT_IFACE_OUT, $2); }
 |
-	T_OPT_SRC_IP T_IP/*ipmask*/ { $$ = option_init_ip(T_OPT_SRC_IP, $2); }
+	T_OPT_SRC_IP ipmask { $$ = option_init_ip(T_OPT_SRC_IP, $2); }
 |
-	T_OPT_DST_IP T_IP { $$ = option_init_ip(T_OPT_DST_IP, $2); }
+	T_OPT_DST_IP ipmask { $$ = option_init_ip(T_OPT_DST_IP, $2); }
 |
 	T_OPT_PROTO T_NAME { $$ = option_init_name(T_OPT_PROTO, $2); }
 |
@@ -248,18 +258,30 @@ option
 	T_OPT_LOG_LEVEL T_NAME { $$ = option_init_name(T_OPT_LOG_LEVEL, $2); }
 |
 	T_OPT_LOG_PREFIX T_QUOTE { $$ = option_init_name(T_OPT_LOG_PREFIX, $2); }
+|
+	T_OPT_TCP_SYN { $$ = option_init_null(T_OPT_TCP_SYN); }
 ;
 
-/*
 ipmask
 :
-	T_IP
+	ip { $$.addr = $1; $$.mask = 0xFFFFFFFF; }
 |
-	T_IP T_SLASH T_NUMBER
+	ip T_SLASH T_NUMBER { $$.addr = $1;
+	                        $$.mask = 0;
+				int i;
+				for (i = 31; i > (32-$3); i--)
+					$$.mask |= 1<<i;
+			      }
 |
-	T_IP T_SLASH T_IP
+	ip T_SLASH T_IP { $$.addr = $1; $$.mask = $3; }
 ;
-*/
+
+ip
+:
+	T_IP { $$ = $1; }
+|
+	T_NUMBER { $$ = $1; }
+;
 
 %%
 

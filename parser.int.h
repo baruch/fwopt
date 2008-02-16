@@ -8,3 +8,8 @@ extern int lex_line_len;
 extern int lex_last_token_idx;
 extern int lex_prev_token_idx;
 
+struct ipmask {
+	uint32_t addr;
+	uint32_t mask;
+};
+
