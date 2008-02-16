@@ -1,3 +1,4 @@
 iptables -A INPUT -s 192.122.181.0/24 -j ACCEPT
 iptables -A FORWARD -d 15.0.0.0/255.255.0.0 -j ACCEPT
 iptables -A OUTPUT --dst 16.1.2.3 -j ACCEPT
+iptables -A INPUT -d 16.1.2.3/32 -j DROP

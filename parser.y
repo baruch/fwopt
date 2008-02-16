@@ -297,8 +297,8 @@ ipmask
 	ip T_SLASH T_NUMBER { $$.addr = $1;
 	                        $$.mask = 0;
 				int i;
-				for (i = 31; i >= (32-$3); i--)
-					$$.mask |= 1<<i;
+				for (i = 32; i > (32-$3); i--)
+					$$.mask |= 1<<(i-1);
 			      }
 |
 	ip T_SLASH T_IP { $$.addr = $1; $$.mask = $3; }
