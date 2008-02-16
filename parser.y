@@ -273,7 +273,11 @@ static void yyerror(RuleTree *tree, const char *msg)
 	fprintf(stderr, "%s\n", lex_line);
 
 	int i;
-	for (i = 0; i < lex_idx; i++)
+	for (i = 0; i < lex_prev_token_idx; i++)
 		fprintf(stderr, " ");
-	fprintf(stderr, "^\n");
+	for (; i < lex_idx; i++)
+		fprintf(stderr, "^");
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "last_token_idx=%d idx=%d\n", lex_prev_token_idx, lex_idx);
 }

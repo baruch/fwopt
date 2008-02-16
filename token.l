@@ -11,25 +11,41 @@ char lex_line[1024];
 int lex_lineno;
 int lex_idx;
 int lex_line_len;
+int lex_last_token_idx;
+int lex_prev_token_idx;
 
-#define YY_INPUT(buf, result, max_size)                                      \
-	do {                                                                 \
-		while (lex_idx >= lex_line_len) {                            \
-			char *tmp = fgets(lex_line, sizeof(lex_line), yyin); \
-			if (tmp == NULL) {                                   \
-				result = YY_NULL;                            \
-				break; /* exit the while (0) */              \
-			}                                                    \
-			lex_lineno++;                                        \
-			lex_idx = 0;                                         \
-			lex_line_len = strlen(lex_line);                     \
-		}                                                            \
-		if (lex_idx < lex_line_len) {                                \
-			result = 1;                                          \
-			buf[0] = lex_line[lex_idx++];                        \
-		} else                                                       \
-			result = YY_NULL;                                    \
-	} while(0)
+static int my_yy_input(char *buf, int max_size)
+{
+	int result = YY_NULL;
+
+	while (lex_idx >= lex_line_len) {
+		char *tmp = fgets(lex_line, sizeof(lex_line), yyin);
+		if (tmp == NULL) {
+			result = YY_NULL;
+			break;
+		}
+		lex_lineno++;
+		lex_idx = 0;
+		lex_last_token_idx = 0;
+		lex_prev_token_idx = 0;
+		lex_line_len = strlen(lex_line);
+	}
+
+	if (lex_idx < lex_line_len) {
+		result = 1;
+		buf[0] = lex_line[lex_idx++];
+	}
+
+	return result;
+}
+
+static void mark_token_start(void)
+{
+	lex_prev_token_idx = lex_last_token_idx;
+	lex_last_token_idx = lex_idx;
+}
+
+#define YY_INPUT(buf, result, max_size) result = my_yy_input(buf, max_size)
 
 %}
 
@@ -50,37 +66,37 @@ word          {letter}+({number}|\+)?
 "#".*         { /* Ignore comments */ }
 {whitespace}  { /* Ignore whitespace */ }
 
-"iptables"    { return T_IPTABLES; }
+"iptables"    { mark_token_start(); return T_IPTABLES; }
 
-"-A"          { return T_OPT_APPEND; }
-"-N"          { return T_OPT_NEW_CHAIN; }
-"-F"          { return T_OPT_FLUSH; }
-"-X"          { return T_OPT_DELETE_CHAIN; }
-"-P"          { return T_OPT_POLICY; }
-"-j"          { return T_OPT_JUMP; }
+"-A"          { mark_token_start(); return T_OPT_APPEND; }
+"-N"          { mark_token_start(); return T_OPT_NEW_CHAIN; }
+"-F"          { mark_token_start(); return T_OPT_FLUSH; }
+"-X"          { mark_token_start(); return T_OPT_DELETE_CHAIN; }
+"-P"          { mark_token_start(); return T_OPT_POLICY; }
+"-j"          { mark_token_start(); return T_OPT_JUMP; }
 "-i"          |
-"--in-interface" { return T_OPT_IFACE_IN; }
+"--in-interface" { mark_token_start(); return T_OPT_IFACE_IN; }
 "-o"          |
-"--out-interface" { return T_OPT_IFACE_OUT; }
+"--out-interface" { mark_token_start(); return T_OPT_IFACE_OUT; }
 "-s"          |
 "--src"       |
-"--source"    { return T_OPT_SRC_IP; }
+"--source"    { mark_token_start(); return T_OPT_SRC_IP; }
 "--dport"     |
-"--destination-port" { return T_OPT_DST_PORT; }
+"--destination-port" { mark_token_start(); return T_OPT_DST_PORT; }
 "--sport"     |
-"--source-port" { return T_OPT_SRC_PORT; }
+"--source-port" { mark_token_start(); return T_OPT_SRC_PORT; }
 "-p"          |
-"--protocol"  { return T_OPT_PROTO; }
+"--protocol"  { mark_token_start(); return T_OPT_PROTO; }
 "-d"          |
 "--dst"       |
-"--destination" { return T_OPT_DST_IP; }
-"-m"          { return T_OPT_MODULE; }
-"--state"     { return T_OPT_STATE; }
-"--log-level" { return T_OPT_LOG_LEVEL; }
-"--log-prefix" { return T_OPT_LOG_PREFIX; }
--[-a-zA-Z]+   { return T_OPT; }
+"--destination" { mark_token_start(); return T_OPT_DST_IP; }
+"-m"          { mark_token_start(); return T_OPT_MODULE; }
+"--state"     { mark_token_start(); return T_OPT_STATE; }
+"--log-level" { mark_token_start(); return T_OPT_LOG_LEVEL; }
+"--log-prefix" { mark_token_start(); return T_OPT_LOG_PREFIX; }
+-[-a-zA-Z]+   { mark_token_start(); return T_OPT; }
 
-[0-9]+\.[0-9.]+ {
+[0-9]+\.[0-9.]+ { mark_token_start();
 		struct in_addr addr;
                 int ret = inet_aton(yytext, &addr);
 		if (ret == 0)
@@ -89,9 +105,9 @@ word          {letter}+({number}|\+)?
 		yylval.ip = ntohl(addr.s_addr);
                 return T_IP;
               }
-{number}      { sscanf(yytext, "%u", &yylval.num); return T_NUMBER; }
-{word}        { yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
-[a-zA-Z,]+    { yylval.name = talloc_strdup(NULL, yytext); return T_NAME_COMMA; }
-\"[a-zA-Z0-9: ]*\" { yylval.name = talloc_strdup(NULL, yytext); return T_QUOTE; }
-{newline}     { return T_EOL; }
+{number}      { mark_token_start(); sscanf(yytext, "%u", &yylval.num); return T_NUMBER; }
+{word}        { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
+[a-zA-Z,]+    { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME_COMMA; }
+\"[a-zA-Z0-9: ]*\" { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_QUOTE; }
+{newline}     { mark_token_start(); return T_EOL; }
 
