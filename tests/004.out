@@ -1,2 +1,5 @@
 Setting dest port but protocol is not udp nor tcp
+Error: Options parsing failed
+-A INPUT --dport 80 -j ACCEPT
+                              
 Failed parsing input
