@@ -91,7 +91,8 @@ word          {letter}+({number}|\+)?
 "-d"          |
 "--dst"       |
 "--destination" { mark_token_start(); return T_OPT_DST_IP; }
-"-m"          { mark_token_start(); return T_OPT_MODULE; }
+"-m"          |
+"--match"     { mark_token_start(); return T_OPT_MODULE; }
 "--state"     { mark_token_start(); return T_OPT_STATE; }
 "--log-level" { mark_token_start(); return T_OPT_LOG_LEVEL; }
 "--log-prefix" { mark_token_start(); return T_OPT_LOG_PREFIX; }
