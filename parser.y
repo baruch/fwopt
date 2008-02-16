@@ -196,16 +196,21 @@ command
 	T_OPT_APPEND T_NAME options T_OPT_JUMP T_NAME options {
 		Rule *rule = rule_init();
 		if (rule_set_action_name(rule, $5)) {
-			fprintf(stderr, "Illegal jump target '%s'\n", $5);
+			char msg[80];
+			snprintf(msg, sizeof(msg), "Illegal jump target '%s'\n", $5);
+			yyerror(tree, msg);
 			YYABORT;
 		}
 		if (options_into_rule(rule, $3)) {
+			yyerror(tree, "Options parsing failed");
 			YYABORT;
 		}
 		if (options_into_rule(rule, $6)) {
+			yyerror(tree, "Options parsing failed");
 			YYABORT;
 		}
 		if (rules_append_rule(tree, $2, rule)) {
+			yyerror(tree, "Rule append failed");
 			YYABORT;
 		}
 		talloc_unlink(NULL, rule);

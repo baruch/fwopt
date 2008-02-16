@@ -140,8 +140,10 @@ Rule *rule_init(void)
 
 int rule_set_iface_in(Rule *rule, const char *iface)
 {
-	if (rule->if_in[0])
+	if (rule->if_in[0]) {
+		fprintf(stderr, "Rule already has input interface\n");
 		return -1;
+	}
 
 	strncpy(rule->if_in, iface, IFACE_LEN);
 	return 0;
@@ -149,8 +151,10 @@ int rule_set_iface_in(Rule *rule, const char *iface)
 
 int rule_set_iface_out(Rule *rule, const char *iface)
 {
-	if (rule->if_out[0])
+	if (rule->if_out[0]) {
+		fprintf(stderr, "Rule already has output interface\n");
 		return -1;
+	}
 
 	strncpy(rule->if_out, iface, IFACE_LEN);
 	return 0;
@@ -158,8 +162,10 @@ int rule_set_iface_out(Rule *rule, const char *iface)
 
 int rule_set_proto_num(Rule *rule, uint8_t proto)
 {
-	if (rule->proto)
+	if (rule->proto) {
+		fprintf(stderr, "Rule already has protocol\n");
 		return -1;
+	}
 
 	rule->proto = proto;
 	return 0;
@@ -167,19 +173,28 @@ int rule_set_proto_num(Rule *rule, uint8_t proto)
 
 int rule_set_proto_name(Rule *rule, const char *proto_name)
 {
-	if (!proto_name || !*proto_name)
+	if (!proto_name || !*proto_name) {
+		fprintf(stderr, "Protocol name not provided\n");
 		return -1;
+	}
+
+	if (strcmp(proto_name, "all") == 0 || strcmp(proto_name, "ALL") == 0)
+		return 0;
 
 	struct protoent *proto = getprotobyname(proto_name);
-	if (!proto)
+	if (!proto) {
+		fprintf(stderr, "Unknown protocol '%s'\n", proto_name);
 		return -1;
+	}
 	return rule_set_proto_num(rule, proto->p_proto);
 }
 
 int rule_set_addr_src(Rule *rule, uint32_t src_addr, uint32_t src_mask)
 {
-	if (rule->src_mask)
+	if (rule->src_mask) {
+		fprintf(stderr, "Source address already set\n");
 		return -1;
+	}
 	rule->src_addr = src_addr;
 	rule->src_mask = src_mask;
 	return 0;
@@ -187,8 +202,10 @@ int rule_set_addr_src(Rule *rule, uint32_t src_addr, uint32_t src_mask)
 
 int rule_set_addr_dst(Rule *rule, uint32_t dst_addr, uint32_t dst_mask)
 {
-	if (rule->dst_mask)
+	if (rule->dst_mask) {
+		fprintf(stderr, "Dest address already set\n");
 		return -1;
+	}
 	rule->dst_addr = dst_addr;
 	rule->dst_mask = dst_mask;
 	return 0;
@@ -251,8 +268,10 @@ int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code
 
 int rule_set_action_name(Rule *rule, const char *action)
 {
-	if (rule->action != RULE_NOT_SET || !action)
+	if (rule->action != RULE_NOT_SET || !action) {
+		fprintf(stderr, "Rule already set or action not provided\n");
 		return -1;
+	}
 
 	if (strcmp(action, "ACCEPT") == 0)
 		rule->action = RULE_ACCEPT;
@@ -260,9 +279,10 @@ int rule_set_action_name(Rule *rule, const char *action)
 		rule->action = RULE_DROP;
 	else if (strcmp(action, "REJECT") == 0)
 		rule->action = RULE_REJECT;
-	else if (strcmp(action, "RETURN") == 0)
+	else if (strcmp(action, "RETURN") == 0) {
+		fprintf(stderr, "Unsupported target RETURN\n");
 		return -1;
-	else {
+	} else {
 		rule->action = RULE_JUMP;
 		strncpy(rule->jump_chain, action, sizeof(rule->jump_chain));
 	}
