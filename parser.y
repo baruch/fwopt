@@ -12,18 +12,21 @@ int yylex();
 struct Option {
 	struct Option *next;
 	int code;
+	int negate;
 	enum {
 		OPT_NULL,
 		OPT_NAME,
 		OPT_IP,
 		OPT_PORT,
 		OPT_U32,
+		OPT_ICMP,
 	} type;
 	union {
 		const char *name;
 		uint32_t u32;
 		struct ipmask ip;
 		uint16_t port;
+		struct icmptype icmp;
 	} u;
 };
 
@@ -69,6 +72,14 @@ static Option *option_init_u32(int code, uint32_t u32)
 	return opt;
 }
 
+static Option *option_init_icmp_type(int negate, struct icmptype icmp)
+{
+	Option *opt = option_init(T_OPT_ICMP_TYPE, OPT_ICMP);
+	opt->negate = negate;
+	opt->u.icmp = icmp;
+	return opt;
+}
+
 static Option *option_chain(Option *first, Option *next)
 {
 	if (first) {
@@ -98,6 +109,12 @@ static int options_into_rule(Rule *rule, Option *head)
 			else
 				ret = rule_set_proto_num(rule, tmp->u.u32);
 			break;
+		case T_OPT_ICMP_TYPE:
+			if (tmp->u.icmp.code_match)
+				ret = rule_set_icmp_type_code(rule, tmp->negate, tmp->u.icmp.type, tmp->u.icmp.code);
+			else
+				ret = rule_set_icmp_type(rule, tmp->negate, tmp->u.icmp.type);
+			break;
 		case T_OPT_MODULE:
 		case T_OPT_STATE:
 		case T_OPT_LOG_LEVEL:
@@ -124,6 +141,7 @@ static int options_into_rule(Rule *rule, Option *head)
 %union {
 	char *name;
 	struct ipmask ip;
+	struct icmptype icmp;
 	uint32_t num;
 	Option *option;
 }
@@ -133,21 +151,25 @@ static int options_into_rule(Rule *rule, Option *head)
 %token T_OPT_IFACE_IN T_OPT_IFACE_OUT
 %token T_OPT_SRC_IP T_OPT_DST_IP
 %token T_OPT_PROTO T_OPT_SRC_PORT T_OPT_DST_PORT
-%token<name> T_NAME T_NAME_COMMA T_QUOTE
-%token<num> T_NUMBER
-%token T_SLASH
-%token<num> T_IP
-%token T_IPTABLES
-%token T_EOL
+%token T_OPT_ICMP_TYPE
 %token T_OPT_MODULE T_OPT_STATE
 %token T_OPT_LOG_LEVEL T_OPT_LOG_PREFIX
 %token T_OPT_TCP_SYN
 %token T_OPT
 
+%token T_IPTABLES
+%token T_EOL T_SLASH T_EXCLAM
+
+%token<name> T_NAME T_NAME_COMMA T_QUOTE
+%token<num> T_NUMBER
+%token<num> T_IP
+
 %type<option> options
 %type<option> option
 %type<ip> ipmask
 %type<num> ip
+%type<num> negate
+%type<icmp> icmp_type
 
 %start prog
 %error-verbose
@@ -157,34 +179,15 @@ static int options_into_rule(Rule *rule, Option *head)
 
 prog
 :
-	lines done
-;
-
-lines
-:
-	/* empty */
-|
 	line
 |
-	lines T_EOL line
-;
-
-done
-:
-	/* empty */
-|
-	T_EOL
+	prog T_EOL line
 ;
 
 line
 :
 	/* empty */
 |
-	prefixed_command
-;
-
-prefixed_command
-:
 	prefix command
 ;
 
@@ -260,6 +263,24 @@ option
 	T_OPT_LOG_PREFIX T_QUOTE { $$ = option_init_name(T_OPT_LOG_PREFIX, $2); }
 |
 	T_OPT_TCP_SYN { $$ = option_init_null(T_OPT_TCP_SYN); }
+|
+	T_OPT_ICMP_TYPE negate icmp_type { $$ = option_init_icmp_type($2, $3); }
+;
+
+negate
+:
+	/* empty */ { $$ = 0; }
+|
+	T_EXCLAM { $$ = 1; }
+;
+
+icmp_type
+:
+	T_NUMBER { $$.type = $1; $$.code = $$.code_match = 0; }
+|
+	T_NUMBER T_SLASH T_NUMBER { $$.type = $1; $$.code = $3; $$.code_match = 1; }
+|
+	T_NAME { translate_icmp_type($1, &$$); }
 ;
 
 ipmask

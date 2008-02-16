@@ -1,4 +1,4 @@
-SRC=main.c rules.c parser.tab.c lex.yy.c
+SRC=main.c rules.c parser.tab.c lex.yy.c icmptype.c
 OBJ=$(SRC:%.c=%.o)
 CFLAGS=-g -Wall -Werror -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0)
 LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
@@ -16,8 +16,13 @@ TOKEN_OUT=lex.yy.c
 ${TOKEN_OUT}: token.l Makefile
 	flex $<
 
+icmptype.o: icmptype.c parser.h
+ICMP_OUT=icmptype.c
+icmptype.c: icmptype.gperf
+	gperf --output-file $@ $<
+
 clean:
-	-rm -f $(OBJ) fwopt tests/*.res ${PARSER_OUT} ${TOKEN_OUT}
+	-rm -f $(OBJ) fwopt tests/*.res ${PARSER_OUT} ${TOKEN_OUT} ${ICMP_OUT}
 
 test: fwopt
 	@for f in tests/*.in; do                       \

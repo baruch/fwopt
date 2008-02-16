@@ -30,6 +30,8 @@ int rule_set_addr_src(Rule *rule, uint32_t src_addr, uint32_t src_mask);
 int rule_set_addr_dst(Rule *rule, uint32_t dst_addr, uint32_t dst_mask);
 int rule_set_port_src(Rule *rule, uint16_t src_port);
 int rule_set_port_dst(Rule *rule, uint16_t dst_port);
+int rule_set_icmp_type(Rule *rule, int negate, uint16_t type);
+int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code);
 int rule_set_action_name(Rule *rule, const char *action);
 
 #endif

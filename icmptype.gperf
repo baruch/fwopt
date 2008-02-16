@@ -1,0 +1,83 @@
+%define lookup-function-name icmptype_name_translate
+%struct-type
+%language=ANSI-C
+%readonly-tables
+%global-table
+%define word-array-name icmp_type_array
+
+%{
+#include "parser.int.h"
+#include <string.h>
+
+#define ARRAY_SIZE(array) (sizeof(array)/sizeof(array[0]))
+%}
+
+struct icmptype_name {
+	const char *name;
+	uint16_t type;
+	uint16_t code;
+	int code_match;
+};
+%%
+any, 255, 0, 0
+echo-reply, 0, 0, 0
+destination-unreachable, 3, 0, 0
+network-unreachable, 3, 0, 1
+host-unreachable, 3, 1, 1
+protocol-unreachable, 3, 2, 1
+port-unreachable, 3, 3, 1
+fragmentation-needed, 3, 4, 1
+source-route-failed, 3, 5, 1
+network-unknown, 3, 6, 1
+host-unknown, 3, 7, 1
+network-prohibited, 3, 9, 1
+host-prohibited, 3, 10, 1
+TOS-network-unreachable, 3, 11, 1
+TOS-host-unreachable, 3, 12, 1
+communication-prohibited, 3, 13, 1
+host-precedence-violation, 3, 14, 1
+precedence-cutoff, 3, 15, 1
+source-quench, 4, 0, 0
+redirect, 5, 0, 0
+network-redirect, 5, 0, 1
+host-redirect, 5, 1, 1
+TOS-network-redirect, 5, 2, 1
+TOS-host-redirect, 5, 3, 1
+echo-request, 8, 0, 0
+router-advertisement, 9, 1
+router-solicitation, 10, 1
+time-exceeded, 11, 0, 0
+ttl-zero-during-transit, 11, 0, 1
+ttl-zero-during-reassembly, 11, 1, 1
+parameter-problem, 12, 0, 0
+ip-header-bad, 12, 0, 1
+required-option-missing, 12, 1, 1
+timestamp-request, 13, 0, 0
+timestamp-reply, 14, 0, 0
+address-mask-request, 17, 1
+address-mask-reply, 18, 1
+%%
+int translate_icmp_type(const char *name, struct icmptype *icmp)
+{
+	const struct icmptype_name *trans = icmptype_name_translate(name, strlen(name));
+	if (!trans)
+		return -1;
+	icmp->type = trans->type;
+	icmp->code = trans->code;
+	icmp->code_match = trans->code_match;
+	return 0;
+}
+
+const char *name_from_icmp_type(uint16_t type, uint16_t code, int code_match)
+{
+	int i;
+	for (i = 0; i < ARRAY_SIZE(icmp_type_array); i++) {
+		if (icmp_type_array[i].type == type &&
+		    (!code_match || icmp_type_array[i].code == code) &&
+			icmp_type_array[i].name[0] != '\0')
+		{
+			return icmp_type_array[i].name;
+		}
+	}
+	return NULL;
+}

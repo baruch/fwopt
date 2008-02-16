@@ -66,6 +66,7 @@ word          {letter}+({number}|\+)?
 "#".*         { /* Ignore comments */ }
 {whitespace}  { /* Ignore whitespace */ }
 "/"           { mark_token_start(); return T_SLASH; }
+"!"           { mark_token_start(); return T_EXCLAM; }
 
 "iptables"    { mark_token_start(); return T_IPTABLES; }
 
@@ -97,6 +98,7 @@ word          {letter}+({number}|\+)?
 "--log-level" { mark_token_start(); return T_OPT_LOG_LEVEL; }
 "--log-prefix" { mark_token_start(); return T_OPT_LOG_PREFIX; }
 "--syn"       { mark_token_start(); return T_OPT_TCP_SYN; }
+"--icmp-type" { mark_token_start(); return T_OPT_ICMP_TYPE; }
 -[-a-zA-Z]+   { mark_token_start(); return T_OPT; }
 
 [0-9]+\.[0-9.]+ { mark_token_start();
@@ -109,8 +111,8 @@ word          {letter}+({number}|\+)?
                 return T_IP;
               }
 {number}      { mark_token_start(); sscanf(yytext, "%u", &yylval.num); return T_NUMBER; }
-[a-zA-Z0-9_]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
-[a-zA-Z0-9,]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME_COMMA; }
+{letter}[-a-zA-Z0-9_]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
+{letter}[-a-zA-Z0-9,]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME_COMMA; }
 \"[a-zA-Z0-9: ]*\" { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_QUOTE; }
 {newline}     { mark_token_start(); return T_EOL; }
 

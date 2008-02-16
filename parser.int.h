@@ -1,4 +1,5 @@
 #include "rules.h"
+
 typedef struct Option Option;
 
 extern char lex_line[1024];
@@ -13,3 +14,10 @@ struct ipmask {
 	uint32_t mask;
 };
 
+struct icmptype {
+	uint16_t type;
+	uint16_t code;
+	int code_match;
+};
+
+int translate_icmp_type(const char *name, struct icmptype *icmp);

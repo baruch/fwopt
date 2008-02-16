@@ -8,6 +8,8 @@
 #include <glib.h>
 #include <arpa/inet.h>
 
+const char *name_from_icmp_type(uint16_t type, uint16_t code, int code_match);
+
 #define IFACE_LEN 16
 #define CHAIN_LEN 32
 
@@ -24,6 +26,10 @@ struct Rule
 	uint32_t dst_mask;
 	uint16_t src_port;
 	uint16_t dst_port;
+	int icmp_code_match;
+	int icmp_type_match;
+	uint16_t icmp_type;
+	uint16_t icmp_code;
 	RuleAction action;
 	char jump_chain[CHAIN_LEN];
 };
@@ -211,6 +217,33 @@ int rule_set_port_dst(Rule *rule, uint16_t dst_port)
 	return 0;
 }
 
+static int rule_set_icmp(Rule *rule, int negate, uint16_t type, uint16_t code, int code_match)
+{
+	if (rule->icmp_type_match) {
+		fprintf(stderr, "Setting icmp type but it is already set\n");
+		return -1;
+	}
+	if (rule->proto != 1) {
+		fprintf(stderr, "Setting icmp type but protocol is not icmp\n");
+		return -1;
+	}
+	rule->icmp_type_match = negate ? 2 : 1;
+	rule->icmp_type = type;
+	rule->icmp_code = code;
+	rule->icmp_code_match = code_match;
+	return 0;
+}
+
+int rule_set_icmp_type(Rule *rule, int negate, uint16_t type)
+{
+	return rule_set_icmp(rule, negate, type, 0, 0);
+}
+
+int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code)
+{
+	return rule_set_icmp(rule, negate, type, code, 1);
+}
+
 int rule_set_action_name(Rule *rule, const char *action)
 {
 	if (rule->action != RULE_NOT_SET || !action)
@@ -279,6 +312,14 @@ static void ipmask_output(const char *prefix, uint32_t addr, uint32_t mask)
 	}
 }
 
+static const char *negate_output(int negate)
+{
+	if (negate)
+		return "! ";
+	else
+		return "";
+}
+
 static void rule_output(const char *chain_name, Rule *rule)
 {
 	rule_start();
@@ -305,6 +346,16 @@ static void rule_output(const char *chain_name, Rule *rule)
 		rule_mid("--sport %d", rule->src_port);
 	if (rule->dst_port)
 		rule_mid("--dport %d", rule->dst_port);
+
+	if (rule->icmp_type_match) {
+		const char *name = name_from_icmp_type(rule->icmp_type, rule->icmp_code, rule->icmp_code_match);
+		if (name)
+			rule_mid("--icmp-type %s%s", negate_output(rule->icmp_type_match==2), name);
+		else if (rule->icmp_code_match)
+			rule_mid("--icmp-type %s%d/%d", negate_output(rule->icmp_type_match==2), rule->icmp_type, rule->icmp_code);
+		else
+			rule_mid("--icmp-type %s%d", negate_output(rule->icmp_type_match==2), rule->icmp_type);
+	}
 
 	rule_mid("-j %s", action_name(rule->action, rule->jump_chain));
 
