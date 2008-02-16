@@ -106,8 +106,8 @@ word          {letter}+({number}|\+)?
                 return T_IP;
               }
 {number}      { mark_token_start(); sscanf(yytext, "%u", &yylval.num); return T_NUMBER; }
-{word}        { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
-[a-zA-Z,]+    { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME_COMMA; }
+[a-zA-Z0-9_]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
+[a-zA-Z0-9,]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME_COMMA; }
 \"[a-zA-Z0-9: ]*\" { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_QUOTE; }
 {newline}     { mark_token_start(); return T_EOL; }
 
