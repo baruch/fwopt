@@ -116,10 +116,14 @@ static int options_into_rule(Rule *rule, Option *head)
 			else
 				ret = rule_set_icmp_type(rule, tmp->negate, tmp->u.icmp.type);
 			break;
+		case T_OPT_LOG_LEVEL:
+			ret = rule_set_log_level(rule, tmp->u.name);
+			break;
+		case T_OPT_LOG_PREFIX:
+			ret = rule_set_log_prefix(rule, tmp->u.name);
+			break;
 		case T_OPT_MODULE:
 		case T_OPT_STATE:
-		case T_OPT_LOG_LEVEL:
-		case T_OPT_LOG_PREFIX:
 		case T_OPT_TCP_SYN:
 			yyerror(NULL, "Unsupported option %d", tmp->code);
 			break;

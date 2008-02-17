@@ -12,6 +12,7 @@ typedef enum RuleAction {
 	RULE_DROP,
 	RULE_REJECT,
 	RULE_JUMP,
+	RULE_LOG,
 } RuleAction;
 
 
@@ -38,5 +39,7 @@ int rule_set_port_dst(Rule *rule, uint16_t dst_port);
 int rule_set_icmp_type(Rule *rule, int negate, uint16_t type);
 int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code);
 int rule_set_action_name(Rule *rule, const char *action);
+int rule_set_log_level(Rule *rule, const char *level);
+int rule_set_log_prefix(Rule *rule, const char *prefix);
 
 #endif

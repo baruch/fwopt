@@ -32,6 +32,8 @@ struct Rule
 	uint16_t icmp_code;
 	RuleAction action;
 	char jump_chain[CHAIN_LEN];
+	char log_level[8];
+	char log_prefix[64];
 };
 
 typedef struct Chain
@@ -370,6 +372,8 @@ int rule_set_action_name(Rule *rule, const char *action)
 		rule->action = RULE_DROP;
 	else if (strcmp(action, "REJECT") == 0)
 		rule->action = RULE_REJECT;
+	else if (strcmp(action, "LOG") == 0)
+		rule->action = RULE_LOG;
 	else if (strcmp(action, "RETURN") == 0) {
 		fprintf(stderr, "Unsupported target RETURN\n");
 		return -1;
@@ -377,6 +381,48 @@ int rule_set_action_name(Rule *rule, const char *action)
 		rule->action = RULE_JUMP;
 		strncpy(rule->jump_chain, action, sizeof(rule->jump_chain));
 	}
+	return 0;
+}
+
+int rule_set_log_level(Rule *rule, const char *level)
+{
+	if (!level || !level[0]) {
+		fprintf(stderr, "No log level given\n");
+		return -1;
+	}
+
+	if (rule->action != RULE_LOG) {
+		fprintf(stderr, "Rule is not for logging\n");
+		return -1;
+	}
+
+	if (rule->log_level[0]) {
+		fprintf(stderr, "Log level is already set\n");
+		return -1;
+	}
+
+	strncpy(rule->log_level, level, sizeof(rule->log_level));
+	return 0;
+}
+
+int rule_set_log_prefix(Rule *rule, const char *prefix)
+{
+	if (!prefix || !prefix[0]) {
+		fprintf(stderr, "No log prefix given\n");
+		return -1;
+	}
+
+	if (rule->action != RULE_LOG) {
+		fprintf(stderr, "Rule is not for logging\n");
+		return -1;
+	}
+
+	if (rule->log_prefix[0]) {
+		fprintf(stderr, "Log prefix is already set\n");
+		return -1;
+	}
+
+	strncpy(rule->log_prefix, prefix, sizeof(rule->log_prefix));
 	return 0;
 }
 
@@ -405,6 +451,7 @@ static const char *action_name(RuleAction action, const char *chain_name)
 		case RULE_ACCEPT: return "ACCEPT";
 		case RULE_DROP: return "DROP";
 		case RULE_REJECT: return "REJECT";
+		case RULE_LOG: return "LOG";
 		case RULE_JUMP: return chain_name;
 		case RULE_NOT_SET: return "NOT_SET";
 	}
@@ -474,6 +521,11 @@ static void rule_output(const char *chain_name, Rule *rule)
 	}
 
 	rule_mid("-j %s", action_name(rule->action, rule->jump_chain));
+
+	if (rule->log_level[0])
+		rule_mid("--log-level %s", rule->log_level);
+	if (rule->log_prefix[0])
+		rule_mid("--log-prefix %s", rule->log_prefix);
 
 	rule_end();
 }
