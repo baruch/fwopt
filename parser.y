@@ -220,13 +220,13 @@ command
 |
 	T_OPT_POLICY T_NAME T_NAME { printf("Policy for chain %s is %s\n", $2, $3); }
 |
-	T_OPT_FLUSH { printf("Flush all rules\n"); }
+	T_OPT_FLUSH { if (rules_flush_all(tree)) YYABORT; }
 |
-	T_OPT_FLUSH T_NAME { printf("Flush chain '%s'\n", $2); }
+	T_OPT_FLUSH T_NAME { if (rules_flush_chain(tree, $2)) YYABORT; }
 |
-	T_OPT_DELETE_CHAIN { printf("Delete all extra chains\n"); }
+	T_OPT_DELETE_CHAIN { if (rules_delete_chains(tree)) YYABORT; }
 |
-	T_OPT_DELETE_CHAIN T_NAME { printf("Delete chain '%s'\n", $2); }
+	T_OPT_DELETE_CHAIN T_NAME { if (rules_delete_chain(tree, $2)) YYABORT; }
 ;
 
 prefix

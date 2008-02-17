@@ -21,6 +21,10 @@ void rules_optimize(RuleTree *rule_tree);
 
 int rules_append_rule(RuleTree *tree, const char *chain, Rule *rule);
 int rules_new_chain(RuleTree *tree, const char *chain);
+int rules_delete_chain(RuleTree *tree, const char *chain);
+int rules_delete_chains(RuleTree *tree);
+int rules_flush_all(RuleTree *tree);
+int rules_flush_chain(RuleTree *tree, const char *chain);
 
 Rule *rule_init(void);
 int rule_set_iface_in(Rule *rule, const char *iface);

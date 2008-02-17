@@ -100,15 +100,106 @@ static void rules_clear(RuleTree *tree)
 	rules_init_chains(tree);
 }
 
-static Chain *rules_get_chain(RuleTree *tree, const char *name)
+static int rules_get_chain_idx(RuleTree *tree, const char *name)
 {
 	int i;
 	for (i=0; i < tree->num_chains; i++) {
 		if (strcmp(name, tree->chains[i]->name) == 0)
-			return tree->chains[i];
+			return i;
 	}
 
-	return NULL;
+	return -1;
+}
+
+static Chain *rules_get_chain(RuleTree *tree, const char *name)
+{
+	int idx = rules_get_chain_idx(tree, name);
+	if (idx == -1)
+		return NULL;
+	else
+		return tree->chains[idx];
+}
+
+static int rules_delete_chain_idx(RuleTree *tree, int idx)
+{
+	if (tree->chains[idx]->rules) {
+		fprintf(stderr, "Cannot delete a non-empty chain '%s'\n", tree->chains[idx]->name);
+		return -1;
+	}
+
+	if (idx <= 2) {
+		fprintf(stderr, "Cannot delete INPUT, OUTPUT or FORWARD chains\n");
+		return -1;
+	}
+
+	talloc_free(tree->chains[idx]);
+
+	/* Move the chains down the list to avoid holes */
+	for (; idx < tree->num_chains; idx++)
+		tree->chains[idx] = tree->chains[idx+1];
+	tree->num_chains--;
+
+	return 0;
+}
+
+int rules_delete_chain(RuleTree *tree, const char *name)
+{
+	int idx = rules_get_chain_idx(tree, name);
+	if (idx == -1) {
+		fprintf(stderr, "Cannot delete a non-existent chain '%s'\n", name);
+		return -1;
+	}
+
+	return rules_delete_chain_idx(tree, idx);
+}
+
+int rules_delete_chains(RuleTree *tree)
+{
+	while (tree->num_chains > 3) {
+		int res = rules_delete_chain_idx(tree, tree->num_chains-1);
+		if (res) {
+			fprintf(stderr, "Failed deleting all chains\n");
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static int rules_flush_chain_idx(RuleTree *tree, int idx)
+{
+	Chain *chain = tree->chains[idx];
+	if (!chain) {
+		fprintf(stderr, "No chain to flush at index %d\n", idx);
+		return -1;
+	}
+
+	chain->tail = &chain->rules;
+
+	while (chain->rules) {
+		Rule *tmp = chain->rules;
+		chain->rules = tmp->next;
+
+		talloc_free(tmp);
+	}
+
+	return 0;
+}
+
+int rules_flush_all(RuleTree *tree)
+{
+	int i;
+	for (i = 0; i < tree->num_chains; i++) {
+		int ret = rules_flush_chain_idx(tree, i);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+int rules_flush_chain(RuleTree *tree, const char *chain)
+{
+	int idx = rules_get_chain_idx(tree, chain);
+	return rules_flush_chain_idx(tree, idx);
 }
 
 static void chain_add_rule(Chain *chain, Rule *rule)
