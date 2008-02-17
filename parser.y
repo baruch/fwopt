@@ -6,7 +6,8 @@
 #include "rules.h"
 #include "parser.int.h"
 
-static void yyerror(RuleTree *tree, const char *msg);
+static void yyerror(RuleTree *tree, const char *msg, ...);
+
 int yylex();
 
 struct Option {
@@ -120,14 +121,11 @@ static int options_into_rule(Rule *rule, Option *head)
 		case T_OPT_LOG_LEVEL:
 		case T_OPT_LOG_PREFIX:
 		case T_OPT_TCP_SYN:
-			fprintf(stderr, "Unsupported option %d\n", tmp->code);
+			yyerror(NULL, "Unsupported option %d", tmp->code);
 			break;
-		default: {
-			char msg[80];
-			snprintf(msg, sizeof(msg), "Unknown option code %d", tmp->code);
-			yyerror(NULL, msg);
+		default:
+			yyerror(NULL, "Unknown option code %d", tmp->code);
 			ret = -1;
-			}
 			break;
 		}
 	}
@@ -313,20 +311,28 @@ ip
 
 %%
 
-static void yyerror(RuleTree *tree, const char *msg)
+static void yyerror(RuleTree *tree, const char *msg, ...)
 {
-	fprintf(stderr, "Error: %s\n", msg);
+	va_list ap;
 
+	/* Print variable message */
+	fprintf(stderr, "Error: ");
+	va_start(ap, msg);
+	vfprintf(stderr, msg, ap);
+	va_end(ap);
+	fprintf(stderr, "\n");
+
+	/* Print the line on which we have the error, remove trailing \n or \r */
 	int ch = lex_line[lex_line_len-1];
 	if (ch == '\r' || ch == '\n')
 		lex_line[lex_line_len-1] = '\0';
 	fprintf(stderr, "%s\n", lex_line);
 
+	/* Print an index to the location of the error in the line */
 	int i;
 	for (i = 0; i < lex_prev_token_idx; i++)
 		fprintf(stderr, " ");
 	for (; i < lex_idx; i++)
 		fprintf(stderr, "^");
-
 	fprintf(stderr, "\n");
 }
