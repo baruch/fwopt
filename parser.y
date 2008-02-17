@@ -2,8 +2,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <talloc.h>
+#include <string.h>
 #include "parser.h"
 #include "rules.h"
+#include "tcpflags.h"
 #include "parser.int.h"
 
 static void yyerror(RuleTree *tree, const char *msg, ...);
@@ -20,6 +22,7 @@ struct Option {
 		OPT_IP,
 		OPT_PORT,
 		OPT_U32,
+		OPT_U32_MASK,
 		OPT_ICMP,
 	} type;
 	union {
@@ -28,6 +31,10 @@ struct Option {
 		struct ipmask ip;
 		uint16_t port;
 		struct icmptype icmp;
+		struct {
+			uint32_t mask;
+			uint32_t comp;
+		} u32mask;
 	} u;
 };
 
@@ -39,10 +46,12 @@ static Option *option_init(int code, int type)
 	return opt;
 }
 
+/*
 static Option *option_init_null(int code)
 {
 	return option_init(code, OPT_NULL);
 }
+*/
 
 static Option *option_init_name(int code, const char *name)
 {
@@ -66,9 +75,10 @@ static Option *option_init_port(int code, uint16_t port)
 	return opt;
 }
 
-static Option *option_init_u32(int code, uint32_t u32)
+static Option *option_init_u32(int code, int negate, uint32_t u32)
 {
 	Option *opt = option_init(code, OPT_U32);
+	opt->negate = negate;
 	opt->u.u32 = u32;
 	return opt;
 }
@@ -78,6 +88,40 @@ static Option *option_init_icmp_type(int negate, struct icmptype icmp)
 	Option *opt = option_init(T_OPT_ICMP_TYPE, OPT_ICMP);
 	opt->negate = negate;
 	opt->u.icmp = icmp;
+	return opt;
+}
+
+
+
+static Option *option_init_tcp_flags(int negate, char *mask, char *comp)
+{
+	Option *opt = option_init(T_OPT_TCP_FLAGS, OPT_U32_MASK);
+	opt->negate = negate;
+
+	char *token;
+
+	for (token = strtok(mask, ","); token; token = strtok(NULL, ",")) {
+		uint32_t val = 0;
+		int ret = translate_tcp_flag(token, &val);
+		if (ret) {
+			fprintf(stderr, "Invalid TCP flag '%s'\n", token);
+			talloc_free(opt);
+			return NULL;
+		}
+		opt->u.u32mask.mask |= val;
+	}
+
+	for (token = strtok(comp, ","); token; token = strtok(NULL, ",")) {
+		uint32_t val = 0;
+		int ret = translate_tcp_flag(token, &val);
+		if (ret) {
+			fprintf(stderr, "Invalid TCP flag '%s'\n", token);
+			talloc_free(opt);
+			return NULL;
+		}
+		opt->u.u32mask.comp |= val;
+	}
+
 	return opt;
 }
 
@@ -122,9 +166,14 @@ static int options_into_rule(Rule *rule, Option *head)
 		case T_OPT_LOG_PREFIX:
 			ret = rule_set_log_prefix(rule, tmp->u.name);
 			break;
+		case T_OPT_TCP_FLAGS:
+			ret = rule_set_tcp_flags(rule, tmp->negate, tmp->u.u32mask.mask, tmp->u.u32mask.comp);
+			break;
+		case T_OPT_TCP_OPTION:
+			ret = rule_set_tcp_option(rule, tmp->negate, tmp->u.u32);
+			break;
 		case T_OPT_MODULE:
 		case T_OPT_STATE:
-		case T_OPT_TCP_SYN:
 			yyerror(NULL, "Unsupported option %d", tmp->code);
 			break;
 		default:
@@ -156,7 +205,7 @@ static int options_into_rule(Rule *rule, Option *head)
 %token T_OPT_ICMP_TYPE
 %token T_OPT_MODULE T_OPT_STATE
 %token T_OPT_LOG_LEVEL T_OPT_LOG_PREFIX
-%token T_OPT_TCP_SYN
+%token T_OPT_TCP_SYN T_OPT_TCP_FLAGS T_OPT_TCP_OPTION
 %token T_OPT
 
 %token T_IPTABLES
@@ -257,7 +306,7 @@ option
 |
 	T_OPT_PROTO T_NAME { $$ = option_init_name(T_OPT_PROTO, $2); }
 |
-	T_OPT_PROTO T_NUMBER { $$ = option_init_u32(T_OPT_PROTO, $2); }
+	T_OPT_PROTO T_NUMBER { $$ = option_init_u32(T_OPT_PROTO, 0, $2); }
 |
 	T_OPT_SRC_PORT T_NUMBER { $$ = option_init_port(T_OPT_SRC_PORT, $2); }
 |
@@ -271,7 +320,22 @@ option
 |
 	T_OPT_LOG_PREFIX T_QUOTE { $$ = option_init_name(T_OPT_LOG_PREFIX, $2); }
 |
-	T_OPT_TCP_SYN { $$ = option_init_null(T_OPT_TCP_SYN); }
+	negate T_OPT_TCP_SYN {
+	                       char mask[] = "SYN,RST,ACK,FIN";
+			       char comp[] = "SYN";
+	                       $$ = option_init_tcp_flags($1, mask, comp);
+	                       if (!$$) YYABORT;
+			     }
+|
+	T_OPT_TCP_FLAGS negate T_NAME_COMMA T_NAME_COMMA
+	                     {
+			       $$ = option_init_tcp_flags($2, $3, $4);
+			       if (!$$) YYABORT;
+			       talloc_free($3);
+			       talloc_free($4);
+			     }
+|
+	T_OPT_TCP_OPTION negate T_NUMBER { $$ = option_init_u32(T_OPT_TCP_OPTION, $2, $3); }
 |
 	T_OPT_ICMP_TYPE negate icmp_type { $$ = option_init_icmp_type($2, $3); }
 ;

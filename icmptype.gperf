@@ -7,9 +7,8 @@
 
 %{
 #include "parser.int.h"
+#include "macros.h"
 #include <string.h>
-
-#define ARRAY_SIZE(array) (sizeof(array)/sizeof(array[0]))
 %}
 
 struct icmptype_name {

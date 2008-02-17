@@ -1,4 +1,4 @@
-SRC=main.c rules.c parser.tab.c lex.yy.c icmptype.c
+SRC=main.c rules.c parser.tab.c lex.yy.c icmptype.c tcpflags.c
 OBJ=$(SRC:%.c=%.o)
 CFLAGS=-g -Wall -Werror -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0)
 LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
@@ -6,7 +6,7 @@ LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
 fwopt: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^
 
-parser.tab.o: parser.tab.c parser.tab.h rules.h parser.h parser.int.h Makefile
+parser.tab.o: parser.tab.c parser.tab.h rules.h parser.h parser.int.h tcpflags.h macros.h Makefile
 PARSER_OUT=parser.tab.c parser.tab.h parser.output
 ${PARSER_OUT}: parser.y Makefile
 	bison -t -v -d $<
@@ -34,3 +34,4 @@ test: fwopt
 
 main.o: main.c rules.h parser.h Makefile
 rules.o: rules.c rules.h Makefile
+tcpflags.o: tcpflags.c tcpflags.h macros.h Makefile

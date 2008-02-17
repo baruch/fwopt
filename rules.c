@@ -7,6 +7,7 @@
 #include <netdb.h>
 #include <glib.h>
 #include <arpa/inet.h>
+#include "tcpflags.h"
 
 const char *name_from_icmp_type(uint16_t type, uint16_t code, int code_match);
 
@@ -26,10 +27,18 @@ struct Rule
 	uint32_t dst_mask;
 	uint16_t src_port;
 	uint16_t dst_port;
-	int icmp_code_match;
-	int icmp_type_match;
 	uint16_t icmp_type;
 	uint16_t icmp_code;
+	uint8_t  tcp_flags_mask;
+	uint8_t  tcp_flags_comp;
+	uint8_t  tcp_option;
+	int      tcp_flags_match : 1,
+			 tcp_flags_neg : 1,
+			 tcp_option_match : 1,
+			 tcp_option_neg : 1,
+			 icmp_code_match : 1,
+			 icmp_type_match : 1,
+			 icmp_type_neg : 1;
 	RuleAction action;
 	char jump_chain[CHAIN_LEN];
 	char log_level[8];
@@ -342,7 +351,8 @@ static int rule_set_icmp(Rule *rule, int negate, uint16_t type, uint16_t code, i
 		fprintf(stderr, "Setting icmp type but protocol is not icmp\n");
 		return -1;
 	}
-	rule->icmp_type_match = negate ? 2 : 1;
+	rule->icmp_type_match = 1;
+	rule->icmp_type_neg = negate;
 	rule->icmp_type = type;
 	rule->icmp_code = code;
 	rule->icmp_code_match = code_match;
@@ -357,6 +367,43 @@ int rule_set_icmp_type(Rule *rule, int negate, uint16_t type)
 int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code)
 {
 	return rule_set_icmp(rule, negate, type, code, 1);
+}
+
+int rule_set_tcp_flags(Rule *rule, int negate, uint32_t mask, uint32_t comp)
+{
+	if (!mask) {
+		fprintf(stderr, "Empty mask for tcp flag matching\n");
+		return -1;
+	}
+
+	if (comp & !mask) {
+		fprintf(stderr, "Comparison will always fail\n");
+		return -1;
+	}
+
+	if (rule->tcp_flags_match) {
+		fprintf(stderr, "TCP flags matching already set\n");
+		return -1;
+	}
+
+	rule->tcp_flags_mask = mask;
+	rule->tcp_flags_comp = comp;
+	rule->tcp_flags_match = 1;
+	rule->tcp_flags_neg = negate;
+	return 0;
+}
+
+int rule_set_tcp_option(Rule *rule, int negate, uint32_t option)
+{
+	if (rule->tcp_option_match) {
+		fprintf(stderr, "TCP option matching already set\n");
+		return -1;
+	}
+
+	rule->tcp_option_match = 1;
+	rule->tcp_option_neg = negate;
+	rule->tcp_option = option;
+	return 0;
 }
 
 int rule_set_action_name(Rule *rule, const char *action)
@@ -513,12 +560,27 @@ static void rule_output(const char *chain_name, Rule *rule)
 	if (rule->icmp_type_match) {
 		const char *name = name_from_icmp_type(rule->icmp_type, rule->icmp_code, rule->icmp_code_match);
 		if (name)
-			rule_mid("--icmp-type %s%s", negate_output(rule->icmp_type_match==2), name);
+			rule_mid("--icmp-type %s%s", negate_output(rule->icmp_type_neg), name);
 		else if (rule->icmp_code_match)
-			rule_mid("--icmp-type %s%d/%d", negate_output(rule->icmp_type_match==2), rule->icmp_type, rule->icmp_code);
+			rule_mid("--icmp-type %s%d/%d", negate_output(rule->icmp_type_neg), rule->icmp_type, rule->icmp_code);
 		else
-			rule_mid("--icmp-type %s%d", negate_output(rule->icmp_type_match==2), rule->icmp_type);
+			rule_mid("--icmp-type %s%d", negate_output(rule->icmp_type_neg), rule->icmp_type);
 	}
+
+	if (rule->tcp_flags_match) {
+		if (rule->tcp_flags_mask == 0x17 && rule->tcp_flags_comp == 0x02) {
+			rule_mid("%s--syn", negate_output(rule->tcp_flags_neg));
+		} else {
+			char mask[80], comp[80];
+			list_from_tcp_flags(rule->tcp_flags_mask, mask);
+			list_from_tcp_flags(rule->tcp_flags_comp, comp);
+
+			rule_mid("--tcp-flags %s%s %s", negate_output(rule->tcp_flags_neg), mask, comp);
+		}
+	}
+
+	if (rule->tcp_option_match)
+		rule_mid("--tcp-option %s%u", negate_output(rule->tcp_option_neg), rule->tcp_option);
 
 	rule_mid("-j %s", action_name(rule->action, rule->jump_chain));
 

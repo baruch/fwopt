@@ -98,6 +98,8 @@ word          {letter}+({number}|\+)?
 "--log-level" { mark_token_start(); return T_OPT_LOG_LEVEL; }
 "--log-prefix" { mark_token_start(); return T_OPT_LOG_PREFIX; }
 "--syn"       { mark_token_start(); return T_OPT_TCP_SYN; }
+"--tcp-flags" { mark_token_start(); return T_OPT_TCP_FLAGS; }
+"--tcp-option" { mark_token_start(); return T_OPT_TCP_OPTION; }
 "--icmp-type" { mark_token_start(); return T_OPT_ICMP_TYPE; }
 -[-a-zA-Z]+   { mark_token_start(); return T_OPT; }
 

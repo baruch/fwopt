@@ -38,6 +38,8 @@ int rule_set_port_src(Rule *rule, uint16_t src_port);
 int rule_set_port_dst(Rule *rule, uint16_t dst_port);
 int rule_set_icmp_type(Rule *rule, int negate, uint16_t type);
 int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code);
+int rule_set_tcp_flags(Rule *rule, int negate, uint32_t mask, uint32_t comp);
+int rule_set_tcp_option(Rule *rule, int negate, uint32_t option);
 int rule_set_action_name(Rule *rule, const char *action);
 int rule_set_log_level(Rule *rule, const char *level);
 int rule_set_log_prefix(Rule *rule, const char *prefix);
