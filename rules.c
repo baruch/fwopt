@@ -8,6 +8,7 @@
 #include <glib.h>
 #include <arpa/inet.h>
 #include "tcpflags.h"
+#include "state.h"
 
 const char *name_from_icmp_type(uint16_t type, uint16_t code, int code_match);
 
@@ -32,13 +33,16 @@ struct Rule
 	uint8_t  tcp_flags_mask;
 	uint8_t  tcp_flags_comp;
 	uint8_t  tcp_option;
+	uint32_t state;
 	int      tcp_flags_match : 1,
 			 tcp_flags_neg : 1,
 			 tcp_option_match : 1,
 			 tcp_option_neg : 1,
 			 icmp_code_match : 1,
 			 icmp_type_match : 1,
-			 icmp_type_neg : 1;
+			 icmp_type_neg : 1,
+			 match_state : 1,
+			 state_neg : 1;
 	RuleAction action;
 	char jump_chain[CHAIN_LEN];
 	char log_level[8];
@@ -436,6 +440,41 @@ int rule_set_tcp_option(Rule *rule, int negate, uint32_t option)
 	return 0;
 }
 
+int rule_set_match(Rule *rule, const char *name)
+{
+	if (strcmp(name, "state") == 0) {
+		if (rule->match_state) {
+			fprintf(stderr, "match state already set\n");
+			return -1;
+		}
+
+		rule->match_state = 1;
+		return 0;
+	}
+
+	fprintf(stderr, "Unknown match '%s'\n", name);
+	return -1;
+}
+
+int rule_set_state(Rule *rule, int negate, char *states)
+{
+	if (!rule->match_state) {
+		fprintf(stderr, "--match state not given\n");
+		return -1;
+	}
+
+	if (rule->state) {
+		fprintf(stderr, "State match already set\n");
+		return -1;
+	}
+
+	rule->state = states_to_mask(states);
+	if (!rule->state)
+		return -1;
+	rule->state_neg = negate;
+	return 0;
+}
+
 int rule_set_action_name(Rule *rule, const char *action)
 {
 	if (rule->action != RULE_NOT_SET || !action) {
@@ -611,6 +650,16 @@ static void rule_output(const char *chain_name, Rule *rule)
 
 	if (rule->tcp_option_match)
 		rule_mid("--tcp-option %s%u", negate_output(rule->tcp_option_neg), rule->tcp_option);
+
+	if (rule->match_state) {
+		rule_mid("--match state");
+		char states[120];
+		int ret = mask_to_states(rule->state, states);
+		if (!ret)
+			rule_mid("%s--state %s", negate_output(rule->state_neg), states);
+		else
+			rule_mid("--state ERROR-UNKNOWN-MASK");
+	}
 
 	rule_mid("-j %s", action_name(rule->action, rule->jump_chain));
 

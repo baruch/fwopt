@@ -1,4 +1,4 @@
-SRC=main.c rules.c parser.tab.c lex.yy.c icmptype.c tcpflags.c
+SRC=main.c rules.c parser.tab.c lex.yy.c icmptype.c tcpflags.c state.c
 OBJ=$(SRC:%.c=%.o)
 CFLAGS=-g -Wall -Werror -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0)
 LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
@@ -33,5 +33,6 @@ test: fwopt
 .PHONY: clean test
 
 main.o: main.c rules.h parser.h Makefile
-rules.o: rules.c rules.h Makefile
+rules.o: rules.c rules.h state.h tcpflags.h Makefile
 tcpflags.o: tcpflags.c tcpflags.h macros.h Makefile
+state.o: state.c state.h macros.h Makefile

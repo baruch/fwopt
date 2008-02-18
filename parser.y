@@ -126,9 +126,9 @@ option
 |
 	T_OPT_DST_PORT T_NUMBER { RULE_CHECK(rule_set_port_dst(rule, $2)); }
 |
-	T_OPT_MODULE T_NAME { RULE_CHECK(1); }
+	T_OPT_MODULE T_NAME { RULE_CHECK(rule_set_match(rule, $2)); }
 |
-	T_OPT_STATE T_NAME_COMMA { RULE_CHECK(1); }
+	negate T_OPT_STATE T_NAME_COMMA { RULE_CHECK(rule_set_state(rule, $1, $3)); }
 |
 	T_OPT_LOG_LEVEL T_NAME { RULE_CHECK(rule_set_log_level(rule, $2)); }
 |

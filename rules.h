@@ -41,6 +41,8 @@ int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code
 int rule_set_tcp_flags(Rule *rule, int negate, uint32_t mask, uint32_t comp);
 int rule_set_tcp_flags_by_name(Rule *rule, int negate, char *mask, char *comp);
 int rule_set_tcp_option(Rule *rule, int negate, uint32_t option);
+int rule_set_match(Rule *rule, const char *name);
+int rule_set_state(Rule *rule, int negate, char *states);
 int rule_set_action_name(Rule *rule, const char *action);
 int rule_set_log_level(Rule *rule, const char *level);
 int rule_set_log_prefix(Rule *rule, const char *prefix);
