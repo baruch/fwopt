@@ -70,13 +70,7 @@ line
 
 command
 :
-	T_OPT_APPEND T_NAME options T_OPT_JUMP T_NAME options {
-		if (rule_set_action_name(rule, $5)) {
-			char msg[80];
-			snprintf(msg, sizeof(msg), "Illegal jump target '%s'\n", $5);
-			yyerror(tree, msg);
-			YYABORT;
-		}
+	T_OPT_APPEND T_NAME options {
 		if (rules_append_rule(tree, $2, rule)) {
 			yyerror(tree, "Rule append failed");
 			YYABORT;
@@ -114,6 +108,8 @@ options
 
 option
 :
+	T_OPT_JUMP T_NAME { RULE_CHECK(rule_set_action_name(rule, $2)); }
+|
 	T_OPT_IFACE_IN T_NAME { RULE_CHECK(rule_set_iface_in(rule, $2)); }
 |
 	T_OPT_IFACE_OUT T_NAME { RULE_CHECK(rule_set_iface_out(rule, $2)); }

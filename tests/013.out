@@ -1,0 +1,1 @@
+iptables -A INPUT -p gre -j LOG --log-level DEBUG --log-prefix "GRE packet: "
