@@ -244,7 +244,7 @@ Rule *rule_init(void)
 	return rule;
 }
 
-Rule *rule_dup(void *ctx, Rule *rule)
+static Rule *rule_dup(void *ctx, Rule *rule)
 {
 	Rule *newrule = talloc_memdup(ctx, rule, sizeof(*rule));
 	newrule->next = NULL;
