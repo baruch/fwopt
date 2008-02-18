@@ -78,7 +78,7 @@ static Chain *rules_new_chain_int(RuleTree *tree, const char *name)
 
 int rules_new_chain(RuleTree *tree, const char *name)
 {
-	return rules_new_chain_int(tree, name) != NULL;
+	return rules_new_chain_int(tree, name) != NULL ? 0 : -1;
 }
 
 static void rules_init_chains(RuleTree *rule_tree)
