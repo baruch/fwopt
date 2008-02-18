@@ -825,6 +825,9 @@ void optimize_group(Group *group)
 		for (pgrule = &group->groups; *pgrule; pgrule = &(*pgrule)->next)
 			;
 		*pgrule = grule;
+
+		/* Optimize the rest of the group again */
+		optimize_group(group);
 	}
 }
 
@@ -843,7 +846,7 @@ void group_rule_to_chain(GroupRule *grule, RuleTree *tree, Chain *base_chain)
 	static unsigned chain_id = 1;
 	char chain_name[CHAIN_LEN];
 
-	snprintf(chain_name, CHAIN_LEN, "chain_%u", chain_id);
+	snprintf(chain_name, CHAIN_LEN, "chain_%u", chain_id++);
 
 	Chain *chain = rules_new_chain_int(tree, chain_name);
 
