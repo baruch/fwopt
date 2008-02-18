@@ -11,23 +11,33 @@ static int leak_check = 0;
 
 static void parse_args(int argc, char *const argv[])
 {
-	while (1) {
-		static const struct option long_options[] = {
-			{"leak-check", 0, &leak_check, 1},
-			{"full-leak-check", 0, &leak_check, 2},
-			{0, 0, 0, 0}
-		};
+	int version = 0;
 
-		int c = getopt_long(argc, argv, "", long_options, NULL);
+	const struct option long_options[] = {
+		{"leak-check", 0, &leak_check, 1},
+		{"full-leak-check", 0, &leak_check, 2},
+		{"version", 0, &version, 1},
+		{0, 0, 0, 0}
+	};
+
+	while (1) {
+
+		int c = getopt_long(argc, argv, "V", long_options, NULL);
 		if (c == -1)
 			break;
 		switch (c) {
 		case 0: break; /* Options with flags reach here */
+		case 'V': version = 1; break;
 		default:
 			fprintf(stderr, "unknown option %d\n", c);
 			exit(1);
 			break;
 		}
+	}
+
+	if (version) {
+		printf("fwopt " VERSION " -- iptables rules optimizer\n");
+		exit(2);
 	}
 
 	if (optind < argc) {
