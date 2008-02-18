@@ -12,180 +12,9 @@ static void yyerror(RuleTree *tree, const char *msg, ...);
 
 int yylex();
 
-struct Option {
-	struct Option *next;
-	int code;
-	int negate;
-	enum {
-		OPT_NULL,
-		OPT_NAME,
-		OPT_IP,
-		OPT_PORT,
-		OPT_U32,
-		OPT_U32_MASK,
-		OPT_ICMP,
-	} type;
-	union {
-		const char *name;
-		uint32_t u32;
-		struct ipmask ip;
-		uint16_t port;
-		struct icmptype icmp;
-		struct {
-			uint32_t mask;
-			uint32_t comp;
-		} u32mask;
-	} u;
-};
+static Rule *rule;
 
-static Option *option_init(int code, int type)
-{
-	Option *opt = talloc_zero(NULL, Option);
-	opt->code = code;
-	opt->type = type;
-	return opt;
-}
-
-/*
-static Option *option_init_null(int code)
-{
-	return option_init(code, OPT_NULL);
-}
-*/
-
-static Option *option_init_name(int code, const char *name)
-{
-	Option *opt = option_init(code, OPT_NAME);
-	opt->u.name = name;
-	talloc_steal(opt, name);
-	return opt;
-}
-
-static Option *option_init_ip(int code, struct ipmask ip)
-{
-	Option *opt = option_init(code, OPT_IP);
-	opt->u.ip = ip;
-	return opt;
-}
-
-static Option *option_init_port(int code, uint16_t port)
-{
-	Option *opt = option_init(code, OPT_PORT);
-	opt->u.port = port;
-	return opt;
-}
-
-static Option *option_init_u32(int code, int negate, uint32_t u32)
-{
-	Option *opt = option_init(code, OPT_U32);
-	opt->negate = negate;
-	opt->u.u32 = u32;
-	return opt;
-}
-
-static Option *option_init_icmp_type(int negate, struct icmptype icmp)
-{
-	Option *opt = option_init(T_OPT_ICMP_TYPE, OPT_ICMP);
-	opt->negate = negate;
-	opt->u.icmp = icmp;
-	return opt;
-}
-
-
-
-static Option *option_init_tcp_flags(int negate, char *mask, char *comp)
-{
-	Option *opt = option_init(T_OPT_TCP_FLAGS, OPT_U32_MASK);
-	opt->negate = negate;
-
-	char *token;
-
-	for (token = strtok(mask, ","); token; token = strtok(NULL, ",")) {
-		uint32_t val = 0;
-		int ret = translate_tcp_flag(token, &val);
-		if (ret) {
-			fprintf(stderr, "Invalid TCP flag '%s'\n", token);
-			talloc_free(opt);
-			return NULL;
-		}
-		opt->u.u32mask.mask |= val;
-	}
-
-	for (token = strtok(comp, ","); token; token = strtok(NULL, ",")) {
-		uint32_t val = 0;
-		int ret = translate_tcp_flag(token, &val);
-		if (ret) {
-			fprintf(stderr, "Invalid TCP flag '%s'\n", token);
-			talloc_free(opt);
-			return NULL;
-		}
-		opt->u.u32mask.comp |= val;
-	}
-
-	return opt;
-}
-
-static Option *option_chain(Option *first, Option *next)
-{
-	if (first) {
-		first->next = next;
-		(void)talloc_reference(first, next);
-		return first;
-	}
-	return next;
-}
-
-static int options_into_rule(Rule *rule, Option *head)
-{
-	int ret = 0;
-	Option *tmp;
-
-	for (tmp = head; tmp; tmp = tmp->next) {
-		switch (tmp->code) {
-		case T_OPT_IFACE_IN: ret = rule_set_iface_in(rule, tmp->u.name); break;
-		case T_OPT_IFACE_OUT: ret = rule_set_iface_out(rule, tmp->u.name); break;
-		case T_OPT_SRC_IP: ret = rule_set_addr_src(rule, tmp->u.ip.addr, tmp->u.ip.mask);break;
-		case T_OPT_DST_IP: ret = rule_set_addr_dst(rule, tmp->u.ip.addr, tmp->u.ip.mask); break;
-		case T_OPT_DST_PORT: ret = rule_set_port_dst(rule, tmp->u.port); break;
-		case T_OPT_SRC_PORT: ret = rule_set_port_src(rule, tmp->u.port); break;
-		case T_OPT_PROTO:
-			if (tmp->type == OPT_NAME)
-				ret = rule_set_proto_name(rule, tmp->u.name);
-			else
-				ret = rule_set_proto_num(rule, tmp->u.u32);
-			break;
-		case T_OPT_ICMP_TYPE:
-			if (tmp->u.icmp.code_match)
-				ret = rule_set_icmp_type_code(rule, tmp->negate, tmp->u.icmp.type, tmp->u.icmp.code);
-			else
-				ret = rule_set_icmp_type(rule, tmp->negate, tmp->u.icmp.type);
-			break;
-		case T_OPT_LOG_LEVEL:
-			ret = rule_set_log_level(rule, tmp->u.name);
-			break;
-		case T_OPT_LOG_PREFIX:
-			ret = rule_set_log_prefix(rule, tmp->u.name);
-			break;
-		case T_OPT_TCP_FLAGS:
-			ret = rule_set_tcp_flags(rule, tmp->negate, tmp->u.u32mask.mask, tmp->u.u32mask.comp);
-			break;
-		case T_OPT_TCP_OPTION:
-			ret = rule_set_tcp_option(rule, tmp->negate, tmp->u.u32);
-			break;
-		case T_OPT_MODULE:
-		case T_OPT_STATE:
-			yyerror(NULL, "Unsupported option %d", tmp->code);
-			break;
-		default:
-			yyerror(NULL, "Unknown option code %d", tmp->code);
-			ret = -1;
-			break;
-		}
-	}
-
-	talloc_free(head);
-	return ret;
-}
+#define RULE_CHECK(cond) if (cond) { yyerror(NULL, "Failed setting rule"); YYABORT; }
 
 %}
 
@@ -194,7 +23,6 @@ static int options_into_rule(Rule *rule, Option *head)
 	struct ipmask ip;
 	struct icmptype icmp;
 	uint32_t num;
-	Option *option;
 }
 
 %token T_OPT_APPEND T_OPT_NEW_CHAIN T_OPT_DELETE_CHAIN T_OPT_FLUSH T_OPT_POLICY
@@ -215,8 +43,6 @@ static int options_into_rule(Rule *rule, Option *head)
 %token<num> T_NUMBER
 %token<num> T_IP
 
-%type<option> options
-%type<option> option
 %type<ip> ipmask
 %type<num> ip
 %type<num> negate
@@ -245,19 +71,10 @@ line
 command
 :
 	T_OPT_APPEND T_NAME options T_OPT_JUMP T_NAME options {
-		Rule *rule = rule_init();
 		if (rule_set_action_name(rule, $5)) {
 			char msg[80];
 			snprintf(msg, sizeof(msg), "Illegal jump target '%s'\n", $5);
 			yyerror(tree, msg);
-			YYABORT;
-		}
-		if (options_into_rule(rule, $3)) {
-			yyerror(tree, "Options parsing failed");
-			YYABORT;
-		}
-		if (options_into_rule(rule, $6)) {
-			yyerror(tree, "Options parsing failed");
 			YYABORT;
 		}
 		if (rules_append_rule(tree, $2, rule)) {
@@ -265,19 +82,20 @@ command
 			YYABORT;
 		}
 		talloc_unlink(NULL, rule);
+		rule = NULL;
 	}
 |
-	T_OPT_NEW_CHAIN T_NAME { rules_new_chain(tree, $2); }
+	T_OPT_NEW_CHAIN T_NAME { RULE_CHECK(rules_new_chain(tree, $2)); }
 |
 	T_OPT_POLICY T_NAME T_NAME { printf("Policy for chain %s is %s\n", $2, $3); }
 |
-	T_OPT_FLUSH { if (rules_flush_all(tree)) YYABORT; }
+	T_OPT_FLUSH { RULE_CHECK(rules_flush_all(tree)); }
 |
-	T_OPT_FLUSH T_NAME { if (rules_flush_chain(tree, $2)) YYABORT; }
+	T_OPT_FLUSH T_NAME { RULE_CHECK(rules_flush_chain(tree, $2)); }
 |
-	T_OPT_DELETE_CHAIN { if (rules_delete_chains(tree)) YYABORT; }
+	T_OPT_DELETE_CHAIN { RULE_CHECK(rules_delete_chains(tree)); }
 |
-	T_OPT_DELETE_CHAIN T_NAME { if (rules_delete_chain(tree, $2)) YYABORT; }
+	T_OPT_DELETE_CHAIN T_NAME { RULE_CHECK(rules_delete_chain(tree, $2)); }
 ;
 
 prefix
@@ -289,55 +107,62 @@ prefix
 
 options
 :
-	/* empty */ { $$ = NULL; }
+	/* empty */ { if (!rule) rule = rule_init(); }
 |
-	options option { $$ = option_chain($1, $2); }
+	options option
 ;
 
 option
 :
-	T_OPT_IFACE_IN T_NAME { $$ = option_init_name(T_OPT_IFACE_IN, $2); }
+	T_OPT_IFACE_IN T_NAME { RULE_CHECK(rule_set_iface_in(rule, $2)); }
 |
-	T_OPT_IFACE_OUT T_NAME { $$ = option_init_name(T_OPT_IFACE_OUT, $2); }
+	T_OPT_IFACE_OUT T_NAME { RULE_CHECK(rule_set_iface_out(rule, $2)); }
 |
-	T_OPT_SRC_IP ipmask { $$ = option_init_ip(T_OPT_SRC_IP, $2); }
+	T_OPT_SRC_IP ipmask { RULE_CHECK(rule_set_addr_src(rule, $2.addr, $2.mask)); }
 |
-	T_OPT_DST_IP ipmask { $$ = option_init_ip(T_OPT_DST_IP, $2); }
+	T_OPT_DST_IP ipmask { RULE_CHECK(rule_set_addr_dst(rule, $2.addr, $2.mask)); }
 |
-	T_OPT_PROTO T_NAME { $$ = option_init_name(T_OPT_PROTO, $2); }
+	T_OPT_PROTO T_NAME { RULE_CHECK(rule_set_proto_name(rule, $2)); }
 |
-	T_OPT_PROTO T_NUMBER { $$ = option_init_u32(T_OPT_PROTO, 0, $2); }
+	T_OPT_PROTO T_NUMBER { RULE_CHECK(rule_set_proto_num(rule, $2)); }
 |
-	T_OPT_SRC_PORT T_NUMBER { $$ = option_init_port(T_OPT_SRC_PORT, $2); }
+	T_OPT_SRC_PORT T_NUMBER { RULE_CHECK(rule_set_port_src(rule, $2)); }
 |
-	T_OPT_DST_PORT T_NUMBER { $$ = option_init_port(T_OPT_DST_PORT, $2); }
+	T_OPT_DST_PORT T_NUMBER { RULE_CHECK(rule_set_port_dst(rule, $2)); }
 |
-	T_OPT_MODULE T_NAME { $$ = option_init_name(T_OPT_MODULE, $2); }
+	T_OPT_MODULE T_NAME { RULE_CHECK(1); }
 |
-	T_OPT_STATE T_NAME_COMMA { $$ = option_init_name(T_OPT_STATE, $2); }
+	T_OPT_STATE T_NAME_COMMA { RULE_CHECK(1); }
 |
-	T_OPT_LOG_LEVEL T_NAME { $$ = option_init_name(T_OPT_LOG_LEVEL, $2); }
+	T_OPT_LOG_LEVEL T_NAME { RULE_CHECK(rule_set_log_level(rule, $2)); }
 |
-	T_OPT_LOG_PREFIX T_QUOTE { $$ = option_init_name(T_OPT_LOG_PREFIX, $2); }
+	T_OPT_LOG_PREFIX T_QUOTE { RULE_CHECK(rule_set_log_prefix(rule, $2)); }
 |
 	negate T_OPT_TCP_SYN {
 	                       char mask[] = "SYN,RST,ACK,FIN";
 			       char comp[] = "SYN";
-	                       $$ = option_init_tcp_flags($1, mask, comp);
-	                       if (!$$) YYABORT;
+			       RULE_CHECK(rule_set_tcp_flags_by_name(rule, $1, mask, comp));
 			     }
 |
 	T_OPT_TCP_FLAGS negate T_NAME_COMMA T_NAME_COMMA
 	                     {
-			       $$ = option_init_tcp_flags($2, $3, $4);
-			       if (!$$) YYABORT;
+			       int ret = rule_set_tcp_flags_by_name(rule, $2, $3, $4);
 			       talloc_free($3);
 			       talloc_free($4);
+	 		       RULE_CHECK(ret);
 			     }
 |
-	T_OPT_TCP_OPTION negate T_NUMBER { $$ = option_init_u32(T_OPT_TCP_OPTION, $2, $3); }
+	T_OPT_TCP_OPTION negate T_NUMBER { RULE_CHECK(rule_set_tcp_option(rule, $2, $3)); }
 |
-	T_OPT_ICMP_TYPE negate icmp_type { $$ = option_init_icmp_type($2, $3); }
+	T_OPT_ICMP_TYPE negate icmp_type {
+	                                   int ret;
+	                                   if ($3.code_match) {
+				             ret = rule_set_icmp_type_code(rule, $2, $3.type, $3.code);
+					   } else {
+					     ret = rule_set_icmp_type(rule, $2, $3.type);
+					   }
+					   RULE_CHECK(ret);
+					 }
 ;
 
 negate

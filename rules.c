@@ -393,6 +393,36 @@ int rule_set_tcp_flags(Rule *rule, int negate, uint32_t mask, uint32_t comp)
 	return 0;
 }
 
+int rule_set_tcp_flags_by_name(Rule *rule, int negate, char *mask, char *comp)
+{
+	char *token;
+	uint32_t mask_num = 0;
+	uint32_t comp_num = 0;
+
+	for (token = strtok(mask, ","); token; token = strtok(NULL, ",")) {
+		uint32_t val = 0;
+		int ret = translate_tcp_flag(token, &val);
+		if (ret) {
+			fprintf(stderr, "Invalid TCP flag '%s'\n", token);
+			return -1;
+		}
+		mask_num |= val;
+	}
+
+	for (token = strtok(comp, ","); token; token = strtok(NULL, ",")) {
+		uint32_t val = 0;
+		int ret = translate_tcp_flag(token, &val);
+		if (ret) {
+			fprintf(stderr, "Invalid TCP flag '%s'\n", token);
+			return -1;
+		}
+		comp_num |= val;
+	}
+
+	return rule_set_tcp_flags(rule, negate, mask_num, comp_num);
+}
+
+
 int rule_set_tcp_option(Rule *rule, int negate, uint32_t option)
 {
 	if (rule->tcp_option_match) {
