@@ -549,6 +549,11 @@ int rule_set_log_prefix(Rule *rule, const char *prefix)
 	return 0;
 }
 
+static int rule_merge(Rule *rule, Rule *source_rule)
+{
+	return -1;
+}
+
 static void rule_start(void)
 {
 	printf("iptables");
@@ -914,4 +919,54 @@ void rules_optimize(RuleTree *rule_tree)
 	optimize_groups(forward_group);
 	groups_to_chains(forward_group, rule_tree, rule_tree->forward);
 	talloc_free(forward_group);
+}
+
+static void chain_linearize(RuleTree *tree, Chain *chain)
+{
+	Rule **prule = &chain->rules;
+	while (*prule) {
+		Rule *rule = *prule;
+
+		if (rule->action != RULE_JUMP) {
+			/* Nothing to do, go to next rule */
+			prule = &rule->next;
+		} else {
+			/* A jump rule! Let's linearize its chain */
+			Chain *chain = rules_get_chain(tree, rule->jump_chain);
+			Rule *chain_rule;
+			Rule *next_rule = rule;
+			for (chain_rule = chain->rules; chain_rule; chain_rule = chain_rule->next) {
+				Rule *newrule = rule_dup(chain, rule);
+
+				int invalid = rule_merge(newrule, chain_rule);
+				if (invalid) {
+					talloc_free(newrule);
+					continue;
+				}
+
+				newrule->next = next_rule->next;
+				next_rule->next = newrule;
+				next_rule = newrule;
+			}
+
+			/* Remove the jump rule */
+			*prule = (*prule)->next;
+			talloc_free(rule);
+		}
+	}
+}
+
+void rules_linearize(RuleTree *rule_tree)
+{
+	chain_linearize(rule_tree, rule_tree->input);
+	chain_linearize(rule_tree, rule_tree->output);
+	chain_linearize(rule_tree, rule_tree->forward);
+
+	/* Remove all the extra chains */
+	while (rule_tree->num_chains > 3) {
+		int idx = rule_tree->num_chains-1;
+		talloc_free(rule_tree->chains[idx]);
+		rule_tree->chains[idx] = NULL;
+		rule_tree->num_chains--;
+	}
 }

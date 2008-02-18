@@ -19,6 +19,7 @@ typedef enum RuleAction {
 RuleTree *rules_init(const void *ctx);
 void rules_output(RuleTree *rule_tree);
 void rules_optimize(RuleTree *rule_tree);
+void rules_linearize(RuleTree *rule_tree);
 
 int rules_append_rule(RuleTree *tree, const char *chain, Rule *rule);
 int rules_new_chain(RuleTree *tree, const char *chain);

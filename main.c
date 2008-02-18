@@ -8,6 +8,7 @@
 #include <getopt.h>
 
 static int leak_check = 0;
+static int linearize = 0;
 
 static void parse_args(int argc, char *const argv[])
 {
@@ -16,18 +17,20 @@ static void parse_args(int argc, char *const argv[])
 	const struct option long_options[] = {
 		{"leak-check", 0, &leak_check, 1},
 		{"full-leak-check", 0, &leak_check, 2},
+		{"linearize", 0, NULL, 'l'},
 		{"version", 0, &version, 1},
 		{0, 0, 0, 0}
 	};
 
 	while (1) {
 
-		int c = getopt_long(argc, argv, "V", long_options, NULL);
+		int c = getopt_long(argc, argv, "Vl", long_options, NULL);
 		if (c == -1)
 			break;
 		switch (c) {
 		case 0: break; /* Options with flags reach here */
 		case 'V': version = 1; break;
+		case 'l': linearize = 1; break;
 		default:
 			fprintf(stderr, "unknown option %d\n", c);
 			exit(1);
@@ -66,6 +69,8 @@ int main(int argc, char * const argv[])
 		fprintf(stderr, "Failed parsing input\n");
 		main_ret = 1;
 	} else {
+		if (linearize)
+			rules_linearize(rule_tree);
 		rules_optimize(rule_tree);
 		rules_output(rule_tree);
 	}
