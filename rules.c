@@ -244,6 +244,13 @@ Rule *rule_init(void)
 	return rule;
 }
 
+Rule *rule_dup(void *ctx, Rule *rule)
+{
+	Rule *newrule = talloc_memdup(ctx, rule, sizeof(*rule));
+	newrule->next = NULL;
+	return newrule;
+}
+
 int rule_set_iface_in(Rule *rule, const char *iface)
 {
 	if (rule->if_in[0]) {
@@ -745,8 +752,7 @@ static Group *chain_to_group(RuleTree *rule_tree, Chain *chain)
 		}
 
 		/* Add the rule into this group */
-		Rule *newrule = talloc_memdup(group, rule, sizeof(*rule));
-		newrule->next = NULL;
+		Rule *newrule = rule_dup(group, rule);
 		*group->last_rule = newrule;
 		group->last_rule = &newrule->next;
 	}
