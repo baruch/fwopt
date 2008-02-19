@@ -47,10 +47,6 @@ struct Rule
 	RuleAction action;
 	void *actparam[ACTION_PARAM_NUM];
 
-	uint8_t  tcp_option;
-	int		 tcp_option_match : 1,
-			 tcp_option_neg : 1;
-
 	uint32_t state;
 	int		 match_state : 1,
 			 state_neg : 1;
@@ -254,6 +250,21 @@ static int cond_tcpflags_output(void *vthis, void *vcond)
 	return 0;
 }
 
+typedef struct {
+	uint16_t option;
+	uint16_t neg;
+} cond_tcpopt_t;
+
+SIMPLE_COND(tcpopt);
+
+static int cond_tcpopt_output(void *vthis, void *vcond)
+{
+	cond_tcpopt_t *cond = vcond;
+	rule_mid("--tcp-option %s%u", negate_output(cond->neg), cond->option);
+	return 0;
+}
+
+
 static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_IFACE_IN] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-i"},
 	[COND_IFACE_OUT] = {0, cond_iface_output, cond_iface_dup, NULL, NULL, "-o"},
@@ -264,6 +275,7 @@ static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_PORT_DST] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--dport"},
 	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL, NULL},
 	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, NULL, NULL, NULL},
+	[COND_TCP_OPTION] = {0, cond_tcpopt_output, cond_tcpopt_dup, NULL, NULL, NULL},
 };
 
 static const struct actparam_operator_t actparam_op[ACTION_PARAM_NUM] = {
@@ -689,14 +701,15 @@ int rule_set_tcp_flags_by_name(Rule *rule, int negate, char *mask, char *comp)
 
 int rule_set_tcp_option(Rule *rule, int negate, uint32_t option)
 {
-	if (rule->tcp_option_match) {
+	if (rule->cond[COND_TCP_OPTION]) {
 		fprintf(stderr, "TCP option matching already set\n");
 		return -1;
 	}
 
-	rule->tcp_option_match = 1;
-	rule->tcp_option_neg = negate;
-	rule->tcp_option = option;
+	cond_tcpopt_t *cond = cond_tcpopt_alloc(rule);
+	cond->option = option;
+	cond->neg = negate;
+	rule->cond[COND_TCP_OPTION] = cond;
 	return 0;
 }
 
@@ -857,9 +870,6 @@ static void rule_output(const char *chain_name, Rule *rule)
 		if (rule->cond[i])
 			cond_op[i].output(cond_op[i].this, rule->cond[i]);
 	}
-
-	if (rule->tcp_option_match)
-		rule_mid("--tcp-option %s%u", negate_output(rule->tcp_option_neg), rule->tcp_option);
 
 	if (rule->match_state) {
 		rule_mid("--match state");
