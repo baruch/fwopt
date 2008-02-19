@@ -47,12 +47,6 @@ struct Rule
 	RuleAction action;
 	void *actparam[ACTION_PARAM_NUM];
 
-	uint16_t icmp_type;
-	uint16_t icmp_code;
-	int		 icmp_code_match : 1,
-			 icmp_type_match : 1,
-			 icmp_type_neg : 1;
-
 	uint8_t  tcp_flags_mask;
 	uint8_t  tcp_flags_comp;
 	int      tcp_flags_match : 1,
