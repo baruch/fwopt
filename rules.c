@@ -54,7 +54,7 @@ struct Rule
 
 struct cond_operator_t {
 	int (*merge)(void *cond_to, void * cond_from);
-	int (*output)(void *this, void *cond);
+	void (*output)(void *this, void *cond);
 	void *(*dup)(void *ctx, void *cond);
 	GTree *(*group)(Rule *rule, int idx);
 	int (*cmp)(void *cond_a, void *cond_b);
@@ -64,7 +64,7 @@ struct cond_operator_t {
 
 struct actparam_operator_t {
 	int (*merge)(RuleAction action, void *, void *);
-	int (*output)(RuleAction action, void *);
+	void (*output)(RuleAction action, void *);
 	void *(*dup)(void *ctx, void *cond);
 };
 
@@ -99,12 +99,11 @@ typedef struct {
 
 SIMPLE_COND(iface);
 
-static int cond_iface_output(void *vthis, void *vcond)
+static void cond_iface_output(void *vthis, void *vcond)
 {
 	char *this = vthis;
 	cond_iface_t *cond = vcond;
 	rule_mid("%s %s%s", this, negate_output(cond->negate), cond->name);
-	return 0;
 }
 
 static int cond_iface_cmp(void *va, void *vb)
@@ -141,7 +140,7 @@ typedef struct {
 
 SIMPLE_COND(proto);
 
-static int cond_proto_output(void *vthis, void *vcond)
+static void cond_proto_output(void *vthis, void *vcond)
 {
 	cond_proto_t *cond = vcond;
 
@@ -151,8 +150,6 @@ static int cond_proto_output(void *vthis, void *vcond)
 		rule_mid("-p %s%d", neg, cond->protocol);
 	else
 		rule_mid("-p %s%s", neg, proto->p_name);
-
-	return 0;
 }
 
 typedef struct {
@@ -163,7 +160,7 @@ typedef struct {
 
 SIMPLE_COND(addr);
 
-static int cond_addr_output(void *vthis, void *vcond)
+static void cond_addr_output(void *vthis, void *vcond)
 {
 	cond_addr_t *cond = vcond;
 	char *this = vthis;
@@ -180,8 +177,6 @@ static int cond_addr_output(void *vthis, void *vcond)
 	} else {
 		rule_mid("%s %s%s", this, negate_output(cond->neg), addr_str);
 	}
-
-	return 0;
 }
 
 typedef struct {
@@ -191,12 +186,11 @@ typedef struct {
 
 SIMPLE_COND(port);
 
-static int cond_port_output(void *vthis, void *vcond)
+static void cond_port_output(void *vthis, void *vcond)
 {
 	cond_port_t *cond = vcond;
 	const char *this = vthis;
 	rule_mid("%s %s%u", this, negate_output(cond->neg), cond->port);
-	return 0;
 }
 
 typedef struct {
@@ -208,7 +202,7 @@ typedef struct {
 
 SIMPLE_COND(icmptype);
 
-static int cond_icmptype_output(void *vthis, void *vcond)
+static void cond_icmptype_output(void *vthis, void *vcond)
 {
 	cond_icmptype_t *cond = vcond;
 	const char *name = name_from_icmp_type(cond->type, cond->code, cond->code_match);
@@ -219,7 +213,6 @@ static int cond_icmptype_output(void *vthis, void *vcond)
 		rule_mid("--icmp-type %s%u/%u", neg, cond->type, cond->code);
 	else
 		rule_mid("--icmp-type %s%u", neg, cond->type);
-	return 0;
 }
 
 typedef struct {
@@ -230,7 +223,7 @@ typedef struct {
 
 SIMPLE_COND(tcpflags);
 
-static int cond_tcpflags_output(void *vthis, void *vcond)
+static void cond_tcpflags_output(void *vthis, void *vcond)
 {
 	cond_tcpflags_t *cond = vcond;
 	if (cond->mask == 0x17 && cond->comp == 0x02) {
@@ -242,7 +235,6 @@ static int cond_tcpflags_output(void *vthis, void *vcond)
 
 		rule_mid("--tcp-flags %s%s %s", negate_output(cond->neg), mask, comp);
 	}
-	return 0;
 }
 
 typedef struct {
@@ -252,11 +244,10 @@ typedef struct {
 
 SIMPLE_COND(tcpopt);
 
-static int cond_tcpopt_output(void *vthis, void *vcond)
+static void cond_tcpopt_output(void *vthis, void *vcond)
 {
 	cond_tcpopt_t *cond = vcond;
 	rule_mid("--tcp-option %s%u", negate_output(cond->neg), cond->option);
-	return 0;
 }
 
 typedef struct {
@@ -266,7 +257,7 @@ typedef struct {
 
 SIMPLE_COND(state);
 
-static int cond_state_output(void *vthis, void *vcond)
+static void cond_state_output(void *vthis, void *vcond)
 {
 	cond_state_t *cond = vcond;
 
@@ -278,8 +269,6 @@ static int cond_state_output(void *vthis, void *vcond)
 		rule_mid("%s--state %s", negate_output(cond->neg), states);
 	else
 		rule_mid("--state ERROR-UNKNOWN-MASK");
-
-	return 0;
 }
 
 static const struct cond_operator_t cond_op[COND_NUM] = {
