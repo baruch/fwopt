@@ -15,38 +15,245 @@ const char *name_from_icmp_type(uint16_t type, uint16_t code, int code_match);
 #define IFACE_LEN 16
 #define CHAIN_LEN 32
 
+enum RuleCond {
+	COND_IFACE_IN,
+	COND_IFACE_OUT,
+	COND_ADDR_SRC,
+	COND_ADDR_DST,
+	COND_PROTOCOL,
+	COND_PORT_SRC,
+	COND_PORT_DST,
+	COND_ICMP_TYPE,
+	COND_TCP_FLAGS,
+	COND_TCP_OPTION,
+	COND_MATCH,
+	COND_MATCH_STATE,
+
+	COND_NUM
+};
+
+enum RuleActionParam {
+	ACTION_PARAM_LOG_LEVEL,
+	ACTION_PARAM_LOG_PREFIX,
+
+	ACTION_PARAM_NUM
+};
+
 struct Rule
 {
 	struct Rule *next;
 
-	char if_in[IFACE_LEN];
-	char if_out[IFACE_LEN];
-	uint8_t proto;
-	uint32_t src_addr;
-	uint32_t src_mask;
-	uint32_t dst_addr;
-	uint32_t dst_mask;
-	uint16_t src_port;
-	uint16_t dst_port;
+	void *cond[COND_NUM];
+	RuleAction action;
+	void *actparam[ACTION_PARAM_NUM];
+
 	uint16_t icmp_type;
 	uint16_t icmp_code;
+	int		 icmp_code_match : 1,
+			 icmp_type_match : 1,
+			 icmp_type_neg : 1;
+
 	uint8_t  tcp_flags_mask;
 	uint8_t  tcp_flags_comp;
-	uint8_t  tcp_option;
-	uint32_t state;
 	int      tcp_flags_match : 1,
-			 tcp_flags_neg : 1,
-			 tcp_option_match : 1,
-			 tcp_option_neg : 1,
-			 icmp_code_match : 1,
-			 icmp_type_match : 1,
-			 icmp_type_neg : 1,
-			 match_state : 1,
+			 tcp_flags_neg : 1;
+
+	uint8_t  tcp_option;
+	int		 tcp_option_match : 1,
+			 tcp_option_neg : 1;
+
+	uint32_t state;
+	int		 match_state : 1,
 			 state_neg : 1;
-	RuleAction action;
+
 	char jump_chain[CHAIN_LEN];
 	char log_level[8];
 	char log_prefix[64];
+};
+
+
+struct cond_operator_t {
+	int (*merge)(void *cond_to, void * cond_from);
+	int (*output)(void *this, void *cond);
+	void *(*dup)(void *ctx, void *cond);
+	GTree *(*group)(Rule *rule, int idx);
+	int (*cmp)(void *cond_a, void *cond_b);
+
+	void *this;
+};
+
+struct actparam_operator_t {
+	int (*merge)(RuleAction action, void *, void *);
+	int (*output)(RuleAction action, void *);
+	void *(*dup)(void *ctx, void *cond);
+};
+
+
+static void rule_mid(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	printf(" ");
+	vprintf(fmt, ap);
+	va_end(ap);
+}
+
+static const char *negate_output(int negate)
+{
+	if (negate)
+		return "! ";
+	else
+		return "";
+}
+
+#define SIMPLE_COND(name) \
+	static cond_##name##_t *cond_##name##_alloc(void *ctx) \
+	    { return talloc_zero(ctx, cond_##name##_t); }      \
+	static void *cond_##name##_dup(void *ctx, void *cond)  \
+	    { return talloc_memdup(ctx, cond, sizeof(cond_##name##_t)); }
+
+typedef struct {
+	char name[IFACE_LEN];
+	int negate;
+} cond_iface_t;
+
+SIMPLE_COND(iface);
+
+static int cond_iface_output(void *vthis, void *vcond)
+{
+	char *this = vthis;
+	cond_iface_t *cond = vcond;
+	rule_mid("%s %s%s", this, negate_output(cond->negate), cond->name);
+	return 0;
+}
+
+static int cond_iface_cmp(void *va, void *vb)
+{
+	cond_iface_t *a = va;
+	cond_iface_t *b = vb;
+
+	if (a->negate != b->negate)
+		return a->negate - b->negate;
+	else
+		return strncmp(a->name, b->name, IFACE_LEN);
+}
+
+static GTree *cond_iface_group(Rule *rule, int idx)
+{
+	/* Divide the group into the largest common sub-groups */
+	GTree *tree = g_tree_new((GCompareFunc)cond_iface_cmp);
+	for (; rule; rule = rule->next) {
+		if (!rule->cond[idx])
+			continue;
+		cond_iface_t *cond = rule->cond[idx];
+		gpointer value = g_tree_lookup(tree, cond);
+		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
+		g_tree_insert(tree, cond, GUINT_TO_POINTER(uval+1));
+	}
+
+	return tree;
+}
+
+typedef struct {
+	uint8_t protocol;
+	int negate;
+} cond_proto_t;
+
+SIMPLE_COND(proto);
+
+static int cond_proto_output(void *vthis, void *vcond)
+{
+	cond_proto_t *cond = vcond;
+
+	struct protoent *proto = getprotobynumber(cond->protocol);
+	const char *neg = negate_output(cond->negate);
+	if (!proto)
+		rule_mid("-p %s%d", neg, cond->protocol);
+	else
+		rule_mid("-p %s%s", neg, proto->p_name);
+
+	return 0;
+}
+
+typedef struct {
+	uint32_t addr;
+	uint32_t mask;
+	int neg;
+} cond_addr_t;
+
+SIMPLE_COND(addr);
+
+static int cond_addr_output(void *vthis, void *vcond)
+{
+	cond_addr_t *cond = vcond;
+	char *this = vthis;
+
+	struct in_addr inaddr;
+	char addr_str[4*4];
+
+	inaddr.s_addr = htonl(cond->addr);
+	strcpy(addr_str, inet_ntoa(inaddr));
+
+	if (cond->mask != 0xFFFFFFFF) {
+		inaddr.s_addr = htonl(cond->mask);
+		rule_mid("%s %s%s/%s", this, negate_output(cond->neg), addr_str, inet_ntoa(inaddr));
+	} else {
+		rule_mid("%s %s%s", this, negate_output(cond->neg), addr_str);
+	}
+
+	return 0;
+}
+
+typedef struct {
+	uint16_t port;
+	int neg;
+} cond_port_t;
+
+SIMPLE_COND(port);
+
+static int cond_port_output(void *vthis, void *vcond)
+{
+	cond_port_t *cond = vcond;
+	const char *this = vthis;
+	rule_mid("%s %s%u", this, negate_output(cond->neg), cond->port);
+	return 0;
+}
+
+typedef struct {
+	uint16_t type;
+	uint16_t code;
+	int neg : 1,
+		code_match : 1;
+} cond_icmptype_t;
+
+SIMPLE_COND(icmptype);
+
+static int cond_icmptype_output(void *vthis, void *vcond)
+{
+	cond_icmptype_t *cond = vcond;
+	const char *name = name_from_icmp_type(cond->type, cond->code, cond->code_match);
+	const char *neg = negate_output(cond->neg);
+	if (name)
+		rule_mid("--icmp-type %s%s", neg, name);
+	else if (cond->code_match)
+		rule_mid("--icmp-type %s%u/%u", neg, cond->type, cond->code);
+	else
+		rule_mid("--icmp-type %s%u", neg, cond->type);
+	return 0;
+}
+
+static const struct cond_operator_t cond_op[COND_NUM] = {
+	[COND_IFACE_IN] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-i"},
+	[COND_IFACE_OUT] = {0, cond_iface_output, cond_iface_dup, NULL, NULL, "-o"},
+	[COND_PROTOCOL] = {0, cond_proto_output, cond_proto_dup, NULL, NULL, NULL},
+	[COND_ADDR_SRC] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--src"},
+	[COND_ADDR_DST] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--dst"},
+	[COND_PORT_SRC] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--sport"},
+	[COND_PORT_DST] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--dport"},
+	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL, NULL},
+};
+
+static const struct actparam_operator_t actparam_op[ACTION_PARAM_NUM] = {
 };
 
 typedef struct Chain
@@ -247,44 +454,63 @@ Rule *rule_init(void)
 static Rule *rule_dup(void *ctx, Rule *rule)
 {
 	Rule *newrule = talloc_memdup(ctx, rule, sizeof(*rule));
+	int i;
+	for (i = 0; i < COND_NUM; i++) {
+		if (newrule->cond[i])
+			talloc_reference(newrule, newrule->cond[i]);
+	}
+	for (i = 0; i < ACTION_PARAM_NUM; i++) {
+		if (newrule->actparam[i])
+			talloc_reference(newrule, newrule->actparam[i]);
+	}
 	newrule->next = NULL;
 	return newrule;
 }
 
-int rule_set_iface_in(Rule *rule, const char *iface)
+static int rule_set_iface(Rule *rule, int cond, int negate, const char *iface)
 {
-	if (rule->if_in[0]) {
+	cond_iface_t *c = cond_iface_alloc(rule);
+	strncpy(c->name, iface, IFACE_LEN);
+	c->negate = negate;
+	rule->cond[cond] = c;
+	return 0;
+}
+
+int rule_set_iface_in(Rule *rule, int negate, const char *iface)
+{
+	if (rule->cond[COND_IFACE_IN]) {
 		fprintf(stderr, "Rule already has input interface\n");
 		return -1;
 	}
 
-	strncpy(rule->if_in, iface, IFACE_LEN);
-	return 0;
+	return rule_set_iface(rule, COND_IFACE_IN, negate, iface);
 }
 
-int rule_set_iface_out(Rule *rule, const char *iface)
+int rule_set_iface_out(Rule *rule, int negate, const char *iface)
 {
-	if (rule->if_out[0]) {
+	if (rule->cond[COND_IFACE_OUT]) {
 		fprintf(stderr, "Rule already has output interface\n");
 		return -1;
 	}
 
-	strncpy(rule->if_out, iface, IFACE_LEN);
-	return 0;
+	return rule_set_iface(rule, COND_IFACE_OUT, negate, iface);
 }
 
-int rule_set_proto_num(Rule *rule, uint8_t proto)
+int rule_set_proto_num(Rule *rule, int negate, uint8_t proto)
 {
-	if (rule->proto) {
+	if (rule->cond[COND_PROTOCOL]) {
 		fprintf(stderr, "Rule already has protocol\n");
 		return -1;
 	}
 
-	rule->proto = proto;
+	cond_proto_t *cond = cond_proto_alloc(rule);
+	cond->negate = negate;
+	cond->protocol = proto;
+	rule->cond[COND_PROTOCOL] = cond;
 	return 0;
 }
 
-int rule_set_proto_name(Rule *rule, const char *proto_name)
+int rule_set_proto_name(Rule *rule, int negate, const char *proto_name)
 {
 	if (!proto_name || !*proto_name) {
 		fprintf(stderr, "Protocol name not provided\n");
@@ -299,74 +525,87 @@ int rule_set_proto_name(Rule *rule, const char *proto_name)
 		fprintf(stderr, "Unknown protocol '%s'\n", proto_name);
 		return -1;
 	}
-	return rule_set_proto_num(rule, proto->p_proto);
+	return rule_set_proto_num(rule, negate, proto->p_proto);
 }
 
-int rule_set_addr_src(Rule *rule, uint32_t src_addr, uint32_t src_mask)
+static inline int rule_is_proto(Rule *rule, uint8_t proto)
 {
-	if (rule->src_mask) {
-		fprintf(stderr, "Source address already set\n");
+	cond_proto_t *cond = rule->cond[COND_PROTOCOL];
+	return cond && cond->protocol == proto && !cond->negate;
+}
+
+static int rule_set_addr(Rule *rule, int idx, int negate, uint32_t addr, uint32_t mask)
+{
+	if (rule->cond[idx]) {
+		fprintf(stderr, "Address match already set\n");
 		return -1;
 	}
-	rule->src_addr = src_addr;
-	rule->src_mask = src_mask;
+
+	if (mask == 0)
+		return 0;
+
+	cond_addr_t *cond = cond_addr_alloc(rule);
+	cond->neg = negate;
+	cond->addr = addr;
+	cond->mask = mask;
+	rule->cond[idx] = cond;
 	return 0;
 }
 
-int rule_set_addr_dst(Rule *rule, uint32_t dst_addr, uint32_t dst_mask)
+int rule_set_addr_src(Rule *rule, int negate, uint32_t src_addr, uint32_t src_mask)
 {
-	if (rule->dst_mask) {
-		fprintf(stderr, "Dest address already set\n");
+	return rule_set_addr(rule, COND_ADDR_SRC, negate, src_addr, src_mask);
+}
+
+int rule_set_addr_dst(Rule *rule, int negate, uint32_t dst_addr, uint32_t dst_mask)
+{
+	return rule_set_addr(rule, COND_ADDR_DST, negate, dst_addr, dst_mask);
+}
+
+static int rule_set_port(Rule *rule, int idx, int negate, uint16_t port)
+{
+	if (rule->cond[idx]) {
+		fprintf(stderr, "Port matching is already set\n");
 		return -1;
 	}
-	rule->dst_addr = dst_addr;
-	rule->dst_mask = dst_mask;
+	if (!rule_is_proto(rule, 6) && !rule_is_proto(rule, 17)) {
+		fprintf(stderr, "Setting port but protocol is not udp nor tcp\n");
+		return -1;
+	}
+
+	cond_port_t *cond = cond_port_alloc(rule);
+	cond->neg = negate;
+	cond->port = port;
+	rule->cond[idx] = cond;
 	return 0;
 }
 
-int rule_set_port_src(Rule *rule, uint16_t src_port)
+int rule_set_port_src(Rule *rule, int negate, uint16_t src_port)
 {
-	if (rule->src_port) {
-		fprintf(stderr, "Setting source port but it is already set\n");
-		return -1;
-	}
-	if (rule->proto != 6 && rule->proto != 17) {
-		fprintf(stderr, "Setting source port but protocol is not udp nor tcp\n");
-		return -1;
-	}
-	rule->src_port = src_port;
-	return 0;
+	return rule_set_port(rule, COND_PORT_SRC, negate, src_port);
 }
 
-int rule_set_port_dst(Rule *rule, uint16_t dst_port)
+int rule_set_port_dst(Rule *rule, int negate, uint16_t dst_port)
 {
-	if (rule->dst_port) {
-		fprintf(stderr, "Setting source port but it is already set\n");
-		return -1;
-	}
-	if (rule->proto != 6 && rule->proto != 17) {
-		fprintf(stderr, "Setting dest port but protocol is not udp nor tcp\n");
-		return -1;
-	}
-	rule->dst_port = dst_port;
-	return 0;
+	return rule_set_port(rule, COND_PORT_DST, negate, dst_port);
 }
 
 static int rule_set_icmp(Rule *rule, int negate, uint16_t type, uint16_t code, int code_match)
 {
-	if (rule->icmp_type_match) {
+	if (rule->cond[COND_ICMP_TYPE]) {
 		fprintf(stderr, "Setting icmp type but it is already set\n");
 		return -1;
 	}
-	if (rule->proto != 1) {
+	if (!rule_is_proto(rule, 1)) {
 		fprintf(stderr, "Setting icmp type but protocol is not icmp\n");
 		return -1;
 	}
-	rule->icmp_type_match = 1;
-	rule->icmp_type_neg = negate;
-	rule->icmp_type = type;
-	rule->icmp_code = code;
-	rule->icmp_code_match = code_match;
+	cond_icmptype_t *cond = cond_icmptype_alloc(rule);
+	cond->type = type;
+	cond->code = code;
+	cond->neg = negate;
+	cond->code_match = code_match;
+	rule->cond[COND_ICMP_TYPE] = cond;
 	return 0;
 }
 
@@ -551,6 +790,22 @@ int rule_set_log_prefix(Rule *rule, const char *prefix)
 
 static int rule_merge(Rule *rule, Rule *source_rule)
 {
+	int i;
+	for (i = 0; i < COND_NUM; i++) {
+		if (rule->cond[i] || source_rule->cond[i])
+			cond_op[i].merge(rule->cond[i], source_rule->cond[i]);
+	}
+
+	if (rule->action != source_rule->action) {
+		fprintf(stderr, "Dont know what to do about different actions...");
+		return -1;
+	}
+
+	for (i = 0; i < ACTION_PARAM_NUM; i++) {
+		if (rule->actparam[i] || source_rule->actparam[i])
+			actparam_op[i].merge(rule->action, rule->actparam[i], source_rule->actparam[i]);
+	}
+
 	return -1;
 }
 
@@ -562,15 +817,6 @@ static void rule_start(void)
 static void rule_end(void)
 {
 	printf("\n");
-}
-
-static void rule_mid(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	printf(" ");
-	vprintf(fmt, ap);
-	va_end(ap);
 }
 
 static const char *action_name(RuleAction action, const char *chain_name)
@@ -587,65 +833,15 @@ static const char *action_name(RuleAction action, const char *chain_name)
 	return "UNKNOWN";
 }
 
-static void ipmask_output(const char *prefix, uint32_t addr, uint32_t mask)
-{
-	struct in_addr inaddr;
-	char addr_str[4*4];
-
-	inaddr.s_addr = htonl(addr);
-	strcpy(addr_str, inet_ntoa(inaddr));
-
-	if (mask != 0xFFFFFFFF) {
-		inaddr.s_addr = htonl(mask);
-		rule_mid("%s %s/%s", prefix, addr_str, inet_ntoa(inaddr));
-	} else {
-		rule_mid("%s %s", prefix, addr_str);
-	}
-}
-
-static const char *negate_output(int negate)
-{
-	if (negate)
-		return "! ";
-	else
-		return "";
-}
-
 static void rule_output(const char *chain_name, Rule *rule)
 {
 	rule_start();
 	rule_mid("-A %s", chain_name);
 
-	if (rule->if_in[0])
-		rule_mid("-i %s", rule->if_in);
-	if (rule->if_out[0])
-		rule_mid("-o %s", rule->if_out);
-
-	if (rule->src_mask)
-		ipmask_output("--src", rule->src_addr, rule->src_mask);
-	if (rule->dst_mask)
-		ipmask_output("--dst", rule->dst_addr, rule->dst_mask);
-
-	if (rule->proto) {
-		struct protoent *proto = getprotobynumber(rule->proto);
-		if (!proto)
-			rule_mid("-p %d", rule->proto);
-		else
-			rule_mid("-p %s", proto->p_name);
-	}
-	if (rule->src_port)
-		rule_mid("--sport %d", rule->src_port);
-	if (rule->dst_port)
-		rule_mid("--dport %d", rule->dst_port);
-
-	if (rule->icmp_type_match) {
-		const char *name = name_from_icmp_type(rule->icmp_type, rule->icmp_code, rule->icmp_code_match);
-		if (name)
-			rule_mid("--icmp-type %s%s", negate_output(rule->icmp_type_neg), name);
-		else if (rule->icmp_code_match)
-			rule_mid("--icmp-type %s%d/%d", negate_output(rule->icmp_type_neg), rule->icmp_type, rule->icmp_code);
-		else
-			rule_mid("--icmp-type %s%d", negate_output(rule->icmp_type_neg), rule->icmp_type);
+	int i;
+	for (i = 0; i < COND_NUM; i++) {
+		if (rule->cond[i])
+			cond_op[i].output(cond_op[i].this, rule->cond[i]);
 	}
 
 	if (rule->tcp_flags_match) {
@@ -674,6 +870,11 @@ static void rule_output(const char *chain_name, Rule *rule)
 	}
 
 	rule_mid("-j %s", action_name(rule->action, rule->jump_chain));
+
+	for (i = 0; i < ACTION_PARAM_NUM; i++) {
+		if (rule->actparam[i])
+			actparam_op[i].output(rule->action, rule->actparam[i]);
+	}
 
 	if (rule->log_level[0])
 		rule_mid("--log-level %s", rule->log_level);
@@ -768,6 +969,8 @@ static Group *chain_to_group(RuleTree *rule_tree, Chain *chain)
 struct max_val_t {
 	gpointer key;
 	unsigned value;
+	int idx;
+	int test_idx;
 };
 
 static gboolean max_val(gpointer key, gpointer value, gpointer data)
@@ -778,6 +981,7 @@ static gboolean max_val(gpointer key, gpointer value, gpointer data)
 	if (uval > maxer->value) {
 		maxer->key = key;
 		maxer->value = uval;
+		maxer->idx = maxer->test_idx;
 	}
 
 	return FALSE;
@@ -790,32 +994,34 @@ void optimize_group(Group *group)
 
 	/* @todo Remove duplicate rules, also remove rules that are a subset of a previous rule. */
 
-	/* Divide the group into the largest common sub-groups */
-	GTree *tree_itf_in = g_tree_new_with_data((GCompareDataFunc)strncmp, GUINT_TO_POINTER(IFACE_LEN));
-	Rule *rule;
-	for (rule = group->rules; rule; rule = rule->next) {
-		if (!*rule->if_in)
-			continue;
-		gpointer value = g_tree_lookup(tree_itf_in, rule->if_in);
-		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
-		g_tree_insert(tree_itf_in, rule->if_in, GUINT_TO_POINTER(uval+1));
-	}
+	/* Collate all common conditions to be able to find the maximum */
+	struct max_val_t maxer = { 0, 0, -1, -1 };
 
-	struct max_val_t maxer = { 0, 0 };
-	g_tree_foreach(tree_itf_in, max_val, &maxer);
-	g_tree_destroy(tree_itf_in);
+	int i;
+	for (i = 0; i < COND_NUM; i++) {
+		GTree *tree = cond_op[i].group ? cond_op[i].group(group->rules, i) : NULL;
+		if (tree) {
+			maxer.test_idx = i;
+			g_tree_foreach(tree, max_val, &maxer);
+			g_tree_destroy(tree);
+		}
+	}
 
 	if (maxer.value > 1) {
 		/* Make a group out of this */
 		GroupRule *grule = talloc_zero(group, GroupRule);
-		strncpy(grule->rule.if_in, maxer.key, IFACE_LEN);
+		grule->rule.cond[maxer.idx] = talloc_reference(grule, maxer.key);
 		grule->group.action = group->action;
 		
 		/* Move all matching rules to this group */
 		Rule **grule_last = &grule->group.rules;
 		Rule **prule = &group->rules;
 		while (*prule) {
-			if (strncmp((*prule)->if_in, maxer.key, IFACE_LEN) == 0) {
+			if (cond_op[maxer.idx].cmp(maxer.key, (*prule)->cond[maxer.idx]) == 0) {
+				/* Remove the shared condition from the rule */
+				talloc_free((*prule)->cond[maxer.idx]);
+				(*prule)->cond[maxer.idx] = NULL;
+
 				/* Chain the rule to the new group */
 				*grule_last = *prule; /* Chain the rule to the new group rules */
 				*prule = (*prule)->next; /* Remove the rule from the current group rules */
@@ -826,10 +1032,6 @@ void optimize_group(Group *group)
 		}
 
 		*grule_last = NULL; /* Terminate the new group rules list */
-
-		/* Clear the shared condition from all rules */
-		for (prule = &grule->group.rules; *prule; prule = &(*prule)->next)
-			(*prule)->if_in[0] = '\0';
 
 		/* Attach the new group to the end of the current group groups */
 		GroupRule **pgrule;

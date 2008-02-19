@@ -110,21 +110,21 @@ option
 :
 	T_OPT_JUMP T_NAME { RULE_CHECK(rule_set_action_name(rule, $2)); }
 |
-	T_OPT_IFACE_IN T_NAME { RULE_CHECK(rule_set_iface_in(rule, $2)); }
+	T_OPT_IFACE_IN negate T_NAME { RULE_CHECK(rule_set_iface_in(rule, $2, $3)); }
 |
-	T_OPT_IFACE_OUT T_NAME { RULE_CHECK(rule_set_iface_out(rule, $2)); }
+	T_OPT_IFACE_OUT negate T_NAME { RULE_CHECK(rule_set_iface_out(rule, $2, $3)); }
 |
-	T_OPT_SRC_IP ipmask { RULE_CHECK(rule_set_addr_src(rule, $2.addr, $2.mask)); }
+	T_OPT_SRC_IP negate ipmask { RULE_CHECK(rule_set_addr_src(rule, $2, $3.addr, $3.mask)); }
 |
-	T_OPT_DST_IP ipmask { RULE_CHECK(rule_set_addr_dst(rule, $2.addr, $2.mask)); }
+	T_OPT_DST_IP negate ipmask { RULE_CHECK(rule_set_addr_dst(rule, $2, $3.addr, $3.mask)); }
 |
-	T_OPT_PROTO T_NAME { RULE_CHECK(rule_set_proto_name(rule, $2)); }
+	T_OPT_PROTO negate T_NAME { RULE_CHECK(rule_set_proto_name(rule, $2, $3)); }
 |
-	T_OPT_PROTO T_NUMBER { RULE_CHECK(rule_set_proto_num(rule, $2)); }
+	T_OPT_PROTO negate T_NUMBER { RULE_CHECK(rule_set_proto_num(rule, $2, $3)); }
 |
-	T_OPT_SRC_PORT T_NUMBER { RULE_CHECK(rule_set_port_src(rule, $2)); }
+	T_OPT_SRC_PORT negate T_NUMBER { RULE_CHECK(rule_set_port_src(rule, $2, $3)); }
 |
-	T_OPT_DST_PORT T_NUMBER { RULE_CHECK(rule_set_port_dst(rule, $2)); }
+	T_OPT_DST_PORT negate T_NUMBER { RULE_CHECK(rule_set_port_dst(rule, $2, $3)); }
 |
 	T_OPT_MODULE T_NAME { RULE_CHECK(rule_set_match(rule, $2)); }
 |
