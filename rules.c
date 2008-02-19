@@ -47,11 +47,6 @@ struct Rule
 	RuleAction action;
 	void *actparam[ACTION_PARAM_NUM];
 
-	uint8_t  tcp_flags_mask;
-	uint8_t  tcp_flags_comp;
-	int      tcp_flags_match : 1,
-			 tcp_flags_neg : 1;
-
 	uint8_t  tcp_option;
 	int		 tcp_option_match : 1,
 			 tcp_option_neg : 1;
@@ -236,6 +231,29 @@ static int cond_icmptype_output(void *vthis, void *vcond)
 	return 0;
 }
 
+typedef struct {
+	uint8_t mask;
+	uint8_t comp;
+	int neg;
+} cond_tcpflags_t;
+
+SIMPLE_COND(tcpflags);
+
+static int cond_tcpflags_output(void *vthis, void *vcond)
+{
+	cond_tcpflags_t *cond = vcond;
+	if (cond->mask == 0x17 && cond->comp == 0x02) {
+		rule_mid("%s--syn", negate_output(cond->neg));
+	} else {
+		char mask[80], comp[80];
+		list_from_tcp_flags(cond->mask, mask);
+		list_from_tcp_flags(cond->comp, comp);
+
+		rule_mid("--tcp-flags %s%s %s", negate_output(cond->neg), mask, comp);
+	}
+	return 0;
+}
+
 static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_IFACE_IN] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-i"},
 	[COND_IFACE_OUT] = {0, cond_iface_output, cond_iface_dup, NULL, NULL, "-o"},
@@ -245,6 +263,7 @@ static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_PORT_SRC] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--sport"},
 	[COND_PORT_DST] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--dport"},
 	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL, NULL},
+	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, NULL, NULL, NULL},
 };
 
 static const struct actparam_operator_t actparam_op[ACTION_PARAM_NUM] = {
@@ -615,6 +634,11 @@ int rule_set_icmp_type_code(Rule *rule, int negate, uint16_t type, uint16_t code
 
 int rule_set_tcp_flags(Rule *rule, int negate, uint32_t mask, uint32_t comp)
 {
+	if (rule->cond[COND_TCP_FLAGS]) {
+		fprintf(stderr, "TCP flags matching already set\n");
+		return -1;
+	}
+
 	if (!mask) {
 		fprintf(stderr, "Empty mask for tcp flag matching\n");
 		return -1;
@@ -625,15 +649,11 @@ int rule_set_tcp_flags(Rule *rule, int negate, uint32_t mask, uint32_t comp)
 		return -1;
 	}
 
-	if (rule->tcp_flags_match) {
-		fprintf(stderr, "TCP flags matching already set\n");
-		return -1;
-	}
-
-	rule->tcp_flags_mask = mask;
-	rule->tcp_flags_comp = comp;
-	rule->tcp_flags_match = 1;
-	rule->tcp_flags_neg = negate;
+	cond_tcpflags_t *cond = cond_tcpflags_alloc(rule);
+	cond->mask = mask;
+	cond->comp = comp;
+	cond->neg = negate;
+	rule->cond[COND_TCP_FLAGS] = cond;
 	return 0;
 }
 
@@ -836,18 +856,6 @@ static void rule_output(const char *chain_name, Rule *rule)
 	for (i = 0; i < COND_NUM; i++) {
 		if (rule->cond[i])
 			cond_op[i].output(cond_op[i].this, rule->cond[i]);
-	}
-
-	if (rule->tcp_flags_match) {
-		if (rule->tcp_flags_mask == 0x17 && rule->tcp_flags_comp == 0x02) {
-			rule_mid("%s--syn", negate_output(rule->tcp_flags_neg));
-		} else {
-			char mask[80], comp[80];
-			list_from_tcp_flags(rule->tcp_flags_mask, mask);
-			list_from_tcp_flags(rule->tcp_flags_comp, comp);
-
-			rule_mid("--tcp-flags %s%s %s", negate_output(rule->tcp_flags_neg), mask, comp);
-		}
 	}
 
 	if (rule->tcp_option_match)
