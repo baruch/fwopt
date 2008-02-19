@@ -26,7 +26,6 @@ enum RuleCond {
 	COND_ICMP_TYPE,
 	COND_TCP_FLAGS,
 	COND_TCP_OPTION,
-	COND_MATCH,
 	COND_MATCH_STATE,
 
 	COND_NUM
@@ -46,10 +45,6 @@ struct Rule
 	void *cond[COND_NUM];
 	RuleAction action;
 	void *actparam[ACTION_PARAM_NUM];
-
-	uint32_t state;
-	int		 match_state : 1,
-			 state_neg : 1;
 
 	char jump_chain[CHAIN_LEN];
 	char log_level[8];
@@ -264,6 +259,28 @@ static int cond_tcpopt_output(void *vthis, void *vcond)
 	return 0;
 }
 
+typedef struct {
+	uint32_t state;
+	int neg;
+} cond_state_t;
+
+SIMPLE_COND(state);
+
+static int cond_state_output(void *vthis, void *vcond)
+{
+	cond_state_t *cond = vcond;
+
+	rule_mid("--match state");
+
+	char states[120];
+	int ret = mask_to_states(cond->state, states);
+	if (!ret)
+		rule_mid("%s--state %s", negate_output(cond->neg), states);
+	else
+		rule_mid("--state ERROR-UNKNOWN-MASK");
+
+	return 0;
+}
 
 static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_IFACE_IN] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-i"},
@@ -276,6 +293,7 @@ static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL, NULL},
 	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, NULL, NULL, NULL},
 	[COND_TCP_OPTION] = {0, cond_tcpopt_output, cond_tcpopt_dup, NULL, NULL, NULL},
+	[COND_MATCH_STATE] = {0, cond_state_output, cond_state_dup, NULL, NULL, NULL},
 };
 
 static const struct actparam_operator_t actparam_op[ACTION_PARAM_NUM] = {
@@ -715,15 +733,8 @@ int rule_set_tcp_option(Rule *rule, int negate, uint32_t option)
 
 int rule_set_match(Rule *rule, const char *name)
 {
-	if (strcmp(name, "state") == 0) {
-		if (rule->match_state) {
-			fprintf(stderr, "match state already set\n");
-			return -1;
-		}
-
-		rule->match_state = 1;
+	if (strcmp(name, "state") == 0)
 		return 0;
-	}
 
 	fprintf(stderr, "Unknown match '%s'\n", name);
 	return -1;
@@ -731,20 +742,19 @@ int rule_set_match(Rule *rule, const char *name)
 
 int rule_set_state(Rule *rule, int negate, char *states)
 {
-	if (!rule->match_state) {
-		fprintf(stderr, "--match state not given\n");
-		return -1;
-	}
-
-	if (rule->state) {
+	if (rule->cond[COND_MATCH_STATE]) {
 		fprintf(stderr, "State match already set\n");
 		return -1;
 	}
 
-	rule->state = states_to_mask(states);
-	if (!rule->state)
+	uint32_t state = states_to_mask(states);
+	if (!state)
 		return -1;
-	rule->state_neg = negate;
+
+	cond_state_t *cond = cond_state_alloc(rule);
+	cond->state = state;
+	cond->neg = negate;
+	rule->cond[COND_MATCH_STATE] = cond;
 	return 0;
 }
 
@@ -869,16 +879,6 @@ static void rule_output(const char *chain_name, Rule *rule)
 	for (i = 0; i < COND_NUM; i++) {
 		if (rule->cond[i])
 			cond_op[i].output(cond_op[i].this, rule->cond[i]);
-	}
-
-	if (rule->match_state) {
-		rule_mid("--match state");
-		char states[120];
-		int ret = mask_to_states(rule->state, states);
-		if (!ret)
-			rule_mid("%s--state %s", negate_output(rule->state_neg), states);
-		else
-			rule_mid("--state ERROR-UNKNOWN-MASK");
 	}
 
 	rule_mid("-j %s", action_name(rule->action, rule->jump_chain));
