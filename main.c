@@ -1,3 +1,4 @@
+#include "main.h"
 #include "rules.h"
 #include "parser.h"
 #include <talloc.h>
@@ -7,7 +8,7 @@
 #define _GNU_SOURCE
 #include <getopt.h>
 
-static int leak_check = 0;
+int leak_check = 0;
 static int linearize = 0;
 
 static void parse_args(int argc, char *const argv[])

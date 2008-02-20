@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <talloc.h>
 
+#include "main.h"
 #include "parser.int.h"
 #include "parser.tab.h"
 
@@ -46,6 +47,10 @@ static void mark_token_start(void)
 }
 
 #define YY_INPUT(buf, result, max_size) result = my_yy_input(buf, max_size)
+
+static void *lex_context;
+
+#define YY_USER_INIT lex_context = talloc_init("LEX_CONTEXT");
 
 %}
 
@@ -113,8 +118,13 @@ word          {letter}+({number}|\+)?
                 return T_IP;
               }
 {number}      { mark_token_start(); sscanf(yytext, "%u", &yylval.num); return T_NUMBER; }
-{letter}[-a-zA-Z0-9_]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME; }
-{letter}[-a-zA-Z0-9,]+ { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_NAME_COMMA; }
-\"[a-zA-Z0-9: ]*\" { mark_token_start(); yylval.name = talloc_strdup(NULL, yytext); return T_QUOTE; }
+{letter}[-a-zA-Z0-9_]+ { mark_token_start(); yylval.name = talloc_strdup(lex_context, yytext); return T_NAME; }
+{letter}[-a-zA-Z0-9,]+ { mark_token_start(); yylval.name = talloc_strdup(lex_context, yytext); return T_NAME_COMMA; }
+\"[a-zA-Z0-9: ]*\" { mark_token_start(); yylval.name = talloc_strdup(lex_context, yytext); return T_QUOTE; }
 {newline}     { mark_token_start(); return T_EOL; }
-
+<<EOF>>       {
+                if (leak_check)
+					talloc_report_full(lex_context, stderr);
+                talloc_free(lex_context);
+				yyterminate();
+			  }

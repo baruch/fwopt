@@ -13,7 +13,7 @@ PARSER_OUT=parser.tab.c parser.tab.h parser.output
 ${PARSER_OUT}: parser.y Makefile
 	bison -t -v -d $<
 
-lex.yy.o: lex.yy.c parser.tab.h parser.int.h rules.h Makefile
+lex.yy.o: lex.yy.c parser.tab.h parser.int.h rules.h main.h Makefile
 TOKEN_OUT=lex.yy.c
 ${TOKEN_OUT}: token.l Makefile
 	flex $<
@@ -34,7 +34,7 @@ test: fwopt
 
 .PHONY: clean test
 
-main.o: main.c rules.h parser.h Makefile
+main.o: main.c rules.h parser.h main.h Makefile
 rules.o: rules.c rules.h state.h tcpflags.h Makefile
 tcpflags.o: tcpflags.c tcpflags.h macros.h Makefile
 state.o: state.c state.h macros.h Makefile

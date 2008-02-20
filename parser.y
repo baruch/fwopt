@@ -77,19 +77,20 @@ command
 		}
 		talloc_unlink(NULL, rule);
 		rule = NULL;
+		talloc_free($2);
 	}
 |
-	T_OPT_NEW_CHAIN T_NAME { RULE_CHECK(rules_new_chain(tree, $2)); }
+	T_OPT_NEW_CHAIN T_NAME { RULE_CHECK(rules_new_chain(tree, $2)); talloc_free($2); }
 |
-	T_OPT_POLICY T_NAME T_NAME { printf("Policy for chain %s is %s\n", $2, $3); }
+	T_OPT_POLICY T_NAME T_NAME { printf("Policy for chain %s is %s\n", $2, $3); talloc_free($2); talloc_free($3); }
 |
 	T_OPT_FLUSH { RULE_CHECK(rules_flush_all(tree)); }
 |
-	T_OPT_FLUSH T_NAME { RULE_CHECK(rules_flush_chain(tree, $2)); }
+	T_OPT_FLUSH T_NAME { RULE_CHECK(rules_flush_chain(tree, $2)); talloc_free($2); }
 |
 	T_OPT_DELETE_CHAIN { RULE_CHECK(rules_delete_chains(tree)); }
 |
-	T_OPT_DELETE_CHAIN T_NAME { RULE_CHECK(rules_delete_chain(tree, $2)); }
+	T_OPT_DELETE_CHAIN T_NAME { RULE_CHECK(rules_delete_chain(tree, $2)); talloc_free($2); }
 ;
 
 prefix
@@ -108,17 +109,17 @@ options
 
 option
 :
-	T_OPT_JUMP T_NAME { RULE_CHECK(rule_set_action_name(rule, $2)); }
+	T_OPT_JUMP T_NAME { RULE_CHECK(rule_set_action_name(rule, $2)); talloc_free($2); }
 |
-	T_OPT_IFACE_IN negate T_NAME { RULE_CHECK(rule_set_iface_in(rule, $2, $3)); }
+	T_OPT_IFACE_IN negate T_NAME { RULE_CHECK(rule_set_iface_in(rule, $2, $3)); talloc_free($3); }
 |
-	T_OPT_IFACE_OUT negate T_NAME { RULE_CHECK(rule_set_iface_out(rule, $2, $3)); }
+	T_OPT_IFACE_OUT negate T_NAME { RULE_CHECK(rule_set_iface_out(rule, $2, $3)); talloc_free($3); }
 |
 	T_OPT_SRC_IP negate ipmask { RULE_CHECK(rule_set_addr_src(rule, $2, $3.addr, $3.mask)); }
 |
 	T_OPT_DST_IP negate ipmask { RULE_CHECK(rule_set_addr_dst(rule, $2, $3.addr, $3.mask)); }
 |
-	T_OPT_PROTO negate T_NAME { RULE_CHECK(rule_set_proto_name(rule, $2, $3)); }
+	T_OPT_PROTO negate T_NAME { RULE_CHECK(rule_set_proto_name(rule, $2, $3)); talloc_free($3); }
 |
 	T_OPT_PROTO negate T_NUMBER { RULE_CHECK(rule_set_proto_num(rule, $2, $3)); }
 |
@@ -126,13 +127,13 @@ option
 |
 	T_OPT_DST_PORT negate T_NUMBER { RULE_CHECK(rule_set_port_dst(rule, $2, $3)); }
 |
-	T_OPT_MODULE T_NAME { RULE_CHECK(rule_set_match(rule, $2)); }
+	T_OPT_MODULE T_NAME { RULE_CHECK(rule_set_match(rule, $2)); talloc_free($2); }
 |
-	negate T_OPT_STATE T_NAME_COMMA { RULE_CHECK(rule_set_state(rule, $1, $3)); }
+	negate T_OPT_STATE T_NAME_COMMA { RULE_CHECK(rule_set_state(rule, $1, $3)); talloc_free($3); }
 |
-	T_OPT_LOG_LEVEL T_NAME { RULE_CHECK(rule_set_log_level(rule, $2)); }
+	T_OPT_LOG_LEVEL T_NAME { RULE_CHECK(rule_set_log_level(rule, $2)); talloc_free($2); }
 |
-	T_OPT_LOG_PREFIX T_QUOTE { RULE_CHECK(rule_set_log_prefix(rule, $2)); }
+	T_OPT_LOG_PREFIX T_QUOTE { RULE_CHECK(rule_set_log_prefix(rule, $2)); talloc_free($2); }
 |
 	negate T_OPT_TCP_SYN {
 	                       char mask[] = "SYN,RST,ACK,FIN";
@@ -174,7 +175,7 @@ icmp_type
 |
 	T_NUMBER T_SLASH T_NUMBER { $$.type = $1; $$.code = $3; $$.code_match = 1; }
 |
-	T_NAME { translate_icmp_type($1, &$$); }
+	T_NAME { translate_icmp_type($1, &$$); talloc_free($1); }
 ;
 
 ipmask
