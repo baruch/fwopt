@@ -12,7 +12,7 @@
   + Implement -V/--version
   - Inline such chains into one big initial group
   - Group rules on
-    - Output interface
+    + Output interface
     - source ip
     - dest ip
     - protocol
