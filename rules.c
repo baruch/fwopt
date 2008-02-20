@@ -47,7 +47,6 @@ struct Rule
 	void *actparam[ACTION_PARAM_NUM];
 
 	char jump_chain[CHAIN_LEN];
-	char log_prefix[64];
 };
 
 
@@ -296,8 +295,14 @@ static void *actparam_strdup(void *ctx, void *param)
 	return talloc_strdup(ctx, param);
 }
 
+static void actparam_logpref_output(RuleAction action, void *vparam)
+{
+	rule_mid("--log-prefix %s", (char*)vparam);
+}
+
 static const struct actparam_operator_t actparam_op[ACTION_PARAM_NUM] = {
 	[ACTION_PARAM_LOG_LEVEL] = {NULL, actparam_loglevel_output, actparam_strdup},
+	[ACTION_PARAM_LOG_PREFIX] = {NULL, actparam_logpref_output, actparam_strdup},
 };
 
 typedef struct Chain
@@ -807,6 +812,11 @@ int rule_set_log_level(Rule *rule, const char *level)
 
 int rule_set_log_prefix(Rule *rule, const char *prefix)
 {
+	if (rule->actparam[ACTION_PARAM_LOG_PREFIX]) {
+		fprintf(stderr, "Log prefix is already set\n");
+		return -1;
+	}
+
 	if (!prefix || !prefix[0]) {
 		fprintf(stderr, "No log prefix given\n");
 		return -1;
@@ -817,12 +827,7 @@ int rule_set_log_prefix(Rule *rule, const char *prefix)
 		return -1;
 	}
 
-	if (rule->log_prefix[0]) {
-		fprintf(stderr, "Log prefix is already set\n");
-		return -1;
-	}
-
-	strncpy(rule->log_prefix, prefix, sizeof(rule->log_prefix));
+	rule->actparam[ACTION_PARAM_LOG_PREFIX] = talloc_strdup(rule, prefix);
 	return 0;
 }
 
@@ -888,9 +893,6 @@ static void rule_output(const char *chain_name, Rule *rule)
 		if (rule->actparam[i])
 			actparam_op[i].output(rule->action, rule->actparam[i]);
 	}
-
-	if (rule->log_prefix[0])
-		rule_mid("--log-prefix %s", rule->log_prefix);
 
 	rule_end();
 }
