@@ -47,7 +47,6 @@ struct Rule
 	void *actparam[ACTION_PARAM_NUM];
 
 	char jump_chain[CHAIN_LEN];
-	char log_level[8];
 	char log_prefix[64];
 };
 
@@ -285,7 +284,20 @@ static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_MATCH_STATE] = {0, cond_state_output, cond_state_dup, NULL, NULL, NULL},
 };
 
+
+static void actparam_loglevel_output(RuleAction action, void *vparam)
+{
+	const char *param = vparam;
+	rule_mid("--log-level %s", param);
+}
+
+static void *actparam_strdup(void *ctx, void *param)
+{
+	return talloc_strdup(ctx, param);
+}
+
 static const struct actparam_operator_t actparam_op[ACTION_PARAM_NUM] = {
+	[ACTION_PARAM_LOG_LEVEL] = {NULL, actparam_loglevel_output, actparam_strdup},
 };
 
 typedef struct Chain
@@ -774,6 +786,11 @@ int rule_set_action_name(Rule *rule, const char *action)
 
 int rule_set_log_level(Rule *rule, const char *level)
 {
+	if (rule->actparam[ACTION_PARAM_LOG_LEVEL]) {
+		fprintf(stderr, "Log level is already set\n");
+		return -1;
+	}
+
 	if (!level || !level[0]) {
 		fprintf(stderr, "No log level given\n");
 		return -1;
@@ -784,12 +801,7 @@ int rule_set_log_level(Rule *rule, const char *level)
 		return -1;
 	}
 
-	if (rule->log_level[0]) {
-		fprintf(stderr, "Log level is already set\n");
-		return -1;
-	}
-
-	strncpy(rule->log_level, level, sizeof(rule->log_level));
+	rule->actparam[ACTION_PARAM_LOG_LEVEL] = talloc_strdup(rule, level);
 	return 0;
 }
 
@@ -877,8 +889,6 @@ static void rule_output(const char *chain_name, Rule *rule)
 			actparam_op[i].output(rule->action, rule->actparam[i]);
 	}
 
-	if (rule->log_level[0])
-		rule_mid("--log-level %s", rule->log_level);
 	if (rule->log_prefix[0])
 		rule_mid("--log-prefix %s", rule->log_prefix);
 
