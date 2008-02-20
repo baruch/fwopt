@@ -271,7 +271,7 @@ static void cond_state_output(void *vthis, void *vcond)
 
 static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_IFACE_IN] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-i"},
-	[COND_IFACE_OUT] = {0, cond_iface_output, cond_iface_dup, NULL, NULL, "-o"},
+	[COND_IFACE_OUT] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-o"},
 	[COND_PROTOCOL] = {0, cond_proto_output, cond_proto_dup, NULL, NULL, NULL},
 	[COND_ADDR_SRC] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--src"},
 	[COND_ADDR_DST] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--dst"},

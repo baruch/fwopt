@@ -1,0 +1,5 @@
+iptables -N chain_1
+iptables -A chain_1 --src 1.2.3.4 -j ACCEPT
+iptables -A chain_1 --src 2.3.4.5 -j ACCEPT
+iptables -A OUTPUT -o eth1 --src 3.4.5.6 -j ACCEPT
+iptables -A OUTPUT -o eth0 -j chain_1
