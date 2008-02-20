@@ -51,7 +51,7 @@ struct Rule
 
 
 struct cond_operator_t {
-	int (*merge)(void *cond_to, void * cond_from);
+	int (*intersect)(void *cond_to, void * cond_from);
 	void (*output)(void *this, void *cond);
 	void *(*dup)(void *ctx, void *cond);
 	GTree *(*group)(Rule *rule, int idx);
@@ -61,7 +61,7 @@ struct cond_operator_t {
 };
 
 struct actparam_operator_t {
-	int (*merge)(RuleAction action, void *, void *);
+	int (*intersect)(RuleAction action, void *, void *);
 	void (*output)(RuleAction action, void *);
 	void *(*dup)(void *ctx, void *cond);
 };
@@ -831,12 +831,12 @@ int rule_set_log_prefix(Rule *rule, const char *prefix)
 	return 0;
 }
 
-static int rule_merge(Rule *rule, Rule *source_rule)
+static int rule_intersect(Rule *rule, Rule *source_rule)
 {
 	int i;
 	for (i = 0; i < COND_NUM; i++) {
 		if (rule->cond[i] || source_rule->cond[i])
-			cond_op[i].merge(rule->cond[i], source_rule->cond[i]);
+			cond_op[i].intersect(rule->cond[i], source_rule->cond[i]);
 	}
 
 	if (rule->action != source_rule->action) {
@@ -846,7 +846,7 @@ static int rule_merge(Rule *rule, Rule *source_rule)
 
 	for (i = 0; i < ACTION_PARAM_NUM; i++) {
 		if (rule->actparam[i] || source_rule->actparam[i])
-			actparam_op[i].merge(rule->action, rule->actparam[i], source_rule->actparam[i]);
+			actparam_op[i].intersect(rule->action, rule->actparam[i], source_rule->actparam[i]);
 	}
 
 	return -1;
@@ -1153,7 +1153,7 @@ static void chain_linearize(RuleTree *tree, Chain *chain)
 			for (chain_rule = chain->rules; chain_rule; chain_rule = chain_rule->next) {
 				Rule *newrule = rule_dup(chain, rule);
 
-				int invalid = rule_merge(newrule, chain_rule);
+				int invalid = rule_intersect(newrule, chain_rule);
 				if (invalid) {
 					talloc_free(newrule);
 					continue;
