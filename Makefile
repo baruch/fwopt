@@ -2,7 +2,7 @@ VERSION=0.1.99git
 
 SRC=main.c rules.c parser.tab.c lex.yy.c icmptype.c tcpflags.c state.c
 OBJ=$(SRC:%.c=%.o)
-CFLAGS=-g -Wall -Werror -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0) -DVERSION="\"${VERSION}\""
+CFLAGS=-O0 -g -Wall -Werror -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0) -DVERSION="\"${VERSION}\""
 LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
 
 fwopt: $(OBJ)
@@ -18,9 +18,9 @@ TOKEN_OUT=lex.yy.c
 ${TOKEN_OUT}: token.l Makefile
 	flex $<
 
-icmptype.o: icmptype.c parser.h
+icmptype.o: icmptype.c parser.h Makefile
 ICMP_OUT=icmptype.c
-icmptype.c: icmptype.gperf
+icmptype.c: icmptype.gperf Makefile
 	gperf --output-file $@ $<
 
 clean:
