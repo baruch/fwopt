@@ -10,6 +10,7 @@
 
 int leak_check = 0;
 static int linearize = 0;
+static int optimize = 1;
 
 static void parse_args(int argc, char *const argv[])
 {
@@ -19,6 +20,7 @@ static void parse_args(int argc, char *const argv[])
 		{"leak-check", 0, &leak_check, 1},
 		{"full-leak-check", 0, &leak_check, 2},
 		{"linearize", 0, NULL, 'l'},
+		{"no-optimize", 0, &optimize, 0},
 		{"version", 0, &version, 1},
 		{0, 0, 0, 0}
 	};
@@ -72,7 +74,8 @@ int main(int argc, char * const argv[])
 	} else {
 		if (linearize)
 			rules_linearize(rule_tree);
-		rules_optimize(rule_tree);
+		if (optimize)
+			rules_optimize(rule_tree);
 		rules_output(rule_tree);
 	}
 
