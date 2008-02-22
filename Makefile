@@ -23,6 +23,9 @@ ICMP_OUT=icmptype.c
 icmptype.c: icmptype.gperf Makefile
 	gperf --output-file $@ $<
 
+tags: ${SRC}
+	ctags -R ${SRC} *.h
+
 clean:
 	-rm -f $(OBJ) fwopt tests/*.res ${PARSER_OUT} ${TOKEN_OUT} ${ICMP_OUT}
 
