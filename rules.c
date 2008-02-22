@@ -7,6 +7,7 @@
 #include <netdb.h>
 #include <glib.h>
 #include <arpa/inet.h>
+#include <assert.h>
 #include "tcpflags.h"
 #include "state.h"
 
@@ -42,16 +43,16 @@ struct Rule
 {
 	struct Rule *next;
 
-	void *cond[COND_NUM];
 	RuleAction action;
-	void *actparam[ACTION_PARAM_NUM];
+	char *jump_chain;
 
-	char jump_chain[CHAIN_LEN];
+	void *cond[COND_NUM];
+	void *actparam[ACTION_PARAM_NUM];
 };
 
 
 struct cond_operator_t {
-	int (*intersect)(void *cond_to, void * cond_from);
+	int (*intersect)(Rule *rule, int idx, void * cond_from);
 	void (*output)(void *this, void *cond);
 	void *(*dup)(void *ctx, void *cond);
 	GTree *(*group)(Rule *rule, int idx);
@@ -61,7 +62,7 @@ struct cond_operator_t {
 };
 
 struct actparam_operator_t {
-	int (*intersect)(RuleAction action, void *, void *);
+	int (*intersect)(Rule *rule, int idx, void *actparam_from);
 	void (*output)(RuleAction action, void *);
 	void *(*dup)(void *ctx, void *cond);
 };
@@ -109,7 +110,11 @@ static int cond_iface_cmp(void *va, void *vb)
 	cond_iface_t *a = va;
 	cond_iface_t *b = vb;
 
-	if (a->negate != b->negate)
+	if (!a)
+		return 1;
+	else if (!b)
+		return -1;
+	else if (a->negate != b->negate)
 		return a->negate - b->negate;
 	else
 		return strncmp(a->name, b->name, IFACE_LEN);
@@ -131,6 +136,18 @@ static GTree *cond_iface_group(Rule *rule, int idx)
 	return tree;
 }
 
+static int cond_iface_intersect(Rule *rule, int idx, void *vcond_from)
+{
+	//struct cond_iface_t *from = vcond_from;
+
+	assert(rule->cond[idx] != NULL);
+	assert(vcond_from != NULL);
+
+	assert(0); // It is not implemented yet!
+
+	return -1;
+}
+
 typedef struct {
 	uint8_t protocol;
 	int negate;
@@ -148,6 +165,18 @@ static void cond_proto_output(void *vthis, void *vcond)
 		rule_mid("-p %s%d", neg, cond->protocol);
 	else
 		rule_mid("-p %s%s", neg, proto->p_name);
+}
+
+static int cond_proto_intersect(Rule *rule, int idx, void *vcond_from)
+{
+	cond_proto_t *to = rule->cond[idx];
+	cond_proto_t *from = vcond_from;
+	if (to->protocol == from->protocol && to->negate == from->negate)
+		return 0;
+	else if (to->protocol != from->protocol && to->negate == from->negate)
+		return -1;
+	assert(0); // Not implemented yet
+	return -1;
 }
 
 typedef struct {
@@ -269,10 +298,12 @@ static void cond_state_output(void *vthis, void *vcond)
 		rule_mid("--state ERROR-UNKNOWN-MASK");
 }
 
+#define COND_FUNC_FULL(name,this) cond_##name##_intersect, cond_##name##_output, cond_##name##_dup, cond_##name##_group, cond_##name##_cmp, this
+
 static const struct cond_operator_t cond_op[COND_NUM] = {
-	[COND_IFACE_IN] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-i"},
-	[COND_IFACE_OUT] = {0, cond_iface_output, cond_iface_dup, cond_iface_group, cond_iface_cmp, "-o"},
-	[COND_PROTOCOL] = {0, cond_proto_output, cond_proto_dup, NULL, NULL, NULL},
+	[COND_IFACE_IN] = {COND_FUNC_FULL(iface, "-i")},
+	[COND_IFACE_OUT] = {COND_FUNC_FULL(iface, "-o")},
+	[COND_PROTOCOL] = {cond_proto_intersect, cond_proto_output, cond_proto_dup, NULL, NULL, NULL},
 	[COND_ADDR_SRC] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--src"},
 	[COND_ADDR_DST] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--dst"},
 	[COND_PORT_SRC] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--sport"},
@@ -502,17 +533,23 @@ Rule *rule_init(void)
 
 static Rule *rule_dup(void *ctx, Rule *rule)
 {
-	Rule *newrule = talloc_memdup(ctx, rule, sizeof(*rule));
+	Rule *newrule = talloc_zero(ctx, Rule);
+
+	newrule->action = rule->action;
+	if (newrule->action == RULE_JUMP)
+		newrule->jump_chain = talloc_strdup(newrule, rule->jump_chain);
+
 	int i;
 	for (i = 0; i < COND_NUM; i++) {
-		if (newrule->cond[i])
-			talloc_reference(newrule, newrule->cond[i]);
+		if (rule->cond[i])
+			newrule->cond[i] = cond_op[i].dup(newrule, rule->cond[i]);
 	}
+
 	for (i = 0; i < ACTION_PARAM_NUM; i++) {
-		if (newrule->actparam[i])
-			talloc_reference(newrule, newrule->actparam[i]);
+		if (rule->actparam[i])
+			newrule->actparam[i] = actparam_op[i].dup(newrule, rule->actparam[i]);
 	}
-	newrule->next = NULL;
+
 	return newrule;
 }
 
@@ -784,7 +821,7 @@ int rule_set_action_name(Rule *rule, const char *action)
 		return -1;
 	} else {
 		rule->action = RULE_JUMP;
-		strncpy(rule->jump_chain, action, sizeof(rule->jump_chain));
+		rule->jump_chain = talloc_strdup(rule, action);
 	}
 	return 0;
 }
@@ -835,21 +872,71 @@ static int rule_intersect(Rule *rule, Rule *source_rule)
 {
 	int i;
 	for (i = 0; i < COND_NUM; i++) {
-		if (rule->cond[i] || source_rule->cond[i])
-			cond_op[i].intersect(rule->cond[i], source_rule->cond[i]);
+		if (!source_rule->cond[i])
+			continue;
+
+		if (!rule->cond[i])
+			rule->cond[i] = cond_op[i].dup(rule, source_rule->cond[i]);
+		else {
+			int ret = cond_op[i].intersect(rule, i, source_rule->cond[i]);
+			if (ret) {
+				fprintf(stderr, "Intersection failed idx=%d\n", i);
+				return -1;
+			}
+		}
 	}
 
-	if (rule->action != source_rule->action) {
-		fprintf(stderr, "Dont know what to do about different actions...");
+	if (rule->action == RULE_JUMP) {
+		/* We replace the jump with the new action */
+		rule->action = source_rule->action;
+	} else if (rule->action != source_rule->action) {
+		fprintf(stderr, "Dont know what to do about different actions...\n");
 		return -1;
 	}
 
+	if (rule->jump_chain) {
+		talloc_free(rule->jump_chain);
+		rule->jump_chain = NULL;
+	}
+	if (rule->action == RULE_JUMP)
+		rule->jump_chain = talloc_strdup(rule, source_rule->jump_chain);
+
 	for (i = 0; i < ACTION_PARAM_NUM; i++) {
-		if (rule->actparam[i] || source_rule->actparam[i])
-			actparam_op[i].intersect(rule->action, rule->actparam[i], source_rule->actparam[i]);
+		switch (rule->action) {
+			case RULE_JUMP:
+			case RULE_ACCEPT:
+			case RULE_DROP:
+			case RULE_REJECT:
+			case RULE_NOT_SET:
+				if (rule->actparam[i]) {
+					talloc_free(rule->actparam[i]);
+					rule->actparam[i] = NULL;
+				}
+				break;
+			case RULE_LOG:
+				switch (i) {
+					case ACTION_PARAM_LOG_LEVEL:
+					case ACTION_PARAM_LOG_PREFIX:
+						if (source_rule->actparam[i]) {
+							if (rule->actparam[i]) {
+								talloc_free(rule->actparam[i]);
+								rule->actparam[i] = NULL;
+							}
+							rule->actparam[i] = actparam_op[i].dup(rule, source_rule->actparam[i]);
+						}
+						break;
+					default:
+						if (rule->actparam[i]) {
+							talloc_free(rule->actparam[i]);
+							rule->actparam[i] = NULL;
+						}
+						break;
+				}
+				break;
+		}
 	}
 
-	return -1;
+	return 0;
 }
 
 static void rule_start(void)
@@ -1076,11 +1163,11 @@ void group_rule_to_chain(GroupRule *grule, RuleTree *tree, Chain *base_chain)
 
 	Chain *chain = rules_new_chain_int(tree, chain_name);
 
-	Rule *rule = talloc(base_chain, Rule);
-	memcpy(rule, &grule->rule, sizeof(Rule));
-	strncpy(rule->jump_chain, chain_name, CHAIN_LEN);
+	Rule *rule = rule_dup(NULL, &grule->rule);
 	rule->action = RULE_JUMP;
+	rule->jump_chain = talloc_strdup(rule, chain_name);
 	chain_add_rule(base_chain, rule);
+	talloc_unlink(NULL, rule);
 
 	group_to_chains(&grule->group, tree, chain);
 }
@@ -1136,9 +1223,9 @@ void rules_optimize(RuleTree *rule_tree)
 	talloc_free(forward_group);
 }
 
-static void chain_linearize(RuleTree *tree, Chain *chain)
+static void chain_linearize(RuleTree *tree, Chain *start_chain)
 {
-	Rule **prule = &chain->rules;
+	Rule **prule = &start_chain->rules;
 	while (*prule) {
 		Rule *rule = *prule;
 
@@ -1151,10 +1238,15 @@ static void chain_linearize(RuleTree *tree, Chain *chain)
 			Rule *chain_rule;
 			Rule *next_rule = rule;
 			for (chain_rule = chain->rules; chain_rule; chain_rule = chain_rule->next) {
-				Rule *newrule = rule_dup(chain, rule);
+				Rule *newrule = rule_dup(start_chain, rule);
 
 				int invalid = rule_intersect(newrule, chain_rule);
 				if (invalid) {
+					printf("# Throwing away rule due to invalid intersection\n");
+					printf("# Base rule: ");
+					rule_output(start_chain->name, rule);
+					printf("# Second rule: ");
+					rule_output(chain->name, chain_rule);
 					talloc_free(newrule);
 					continue;
 				}

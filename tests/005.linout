@@ -1,0 +1,5 @@
+Setting port but protocol is not udp nor tcp
+Error: Failed setting rule
+-A INPUT --source-port 1900 -j DROP
+                       ^^^^^
+Failed parsing input

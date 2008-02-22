@@ -1,0 +1,5 @@
+iptables -A INPUT -p tcp --syn -j ACCEPT
+iptables -A INPUT -p tcp ! --syn -j DROP
+iptables -A OUTPUT -p tcp --tcp-option ! 3 -j DROP
+iptables -A OUTPUT -p tcp --tcp-option 5 -j ACCEPT
+iptables -A FORWARD -p tcp --tcp-flags FIN,SYN,RST SYN,RST -j DROP

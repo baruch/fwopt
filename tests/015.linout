@@ -1,0 +1,8 @@
+iptables -N chain_2
+iptables -A chain_2 --src 2.3.4.5 -j DROP
+iptables -A chain_2 --src 1.1.1.1 -j DROP
+iptables -N chain_1
+iptables -A chain_1 --src 1.2.3.4 -j DROP
+iptables -A chain_1 --dst 2.3.4.4 -j DROP
+iptables -A INPUT -i eth0 -j chain_1
+iptables -A INPUT -i eth1 -j chain_2

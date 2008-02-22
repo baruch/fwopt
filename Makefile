@@ -32,6 +32,12 @@ test: fwopt
 		diff -u $${f/.in/.out} $${f/.in/.res}; \
 	done
 
+test_linear: fwopt
+	@for f in tests/*.in; do                       \
+		./fwopt -l < $$f > $${f/.in/.res} 2>&1;   \
+		diff -u $${f/.in/.linout} $${f/.in/.res}; \
+	done
+
 .PHONY: clean test
 
 main.o: main.c rules.h parser.h main.h Makefile
