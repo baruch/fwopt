@@ -82,7 +82,7 @@ command
 |
 	T_OPT_NEW_CHAIN T_NAME { RULE_CHECK(rules_new_chain(tree, $2)); talloc_free($2); }
 |
-	T_OPT_POLICY T_NAME T_NAME { printf("Policy for chain %s is %s\n", $2, $3); talloc_free($2); talloc_free($3); }
+	T_OPT_POLICY T_NAME T_NAME { printf("# Policy for chain %s is %s\n", $2, $3); talloc_free($2); talloc_free($3); }
 |
 	T_OPT_FLUSH { RULE_CHECK(rules_flush_all(tree)); }
 |
