@@ -5,6 +5,8 @@ OBJ=$(SRC:%.c=%.o)
 CFLAGS=-O0 -g -Wall -Werror -DNUM_CHAINS=255 $(shell pkg-config --cflags glib-2.0) -DVERSION="\"${VERSION}\""
 LDFLAGS=-ltalloc $(shell pkg-config --libs glib-2.0)
 
+all: fwopt tags
+
 fwopt: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^
 
@@ -23,7 +25,7 @@ ICMP_OUT=icmptype.c
 icmptype.c: icmptype.gperf Makefile
 	gperf --output-file $@ $<
 
-tags: ${SRC}
+tags: ${SRC} *.h Makefile
 	ctags -R ${SRC} *.h
 
 clean:
