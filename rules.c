@@ -298,6 +298,38 @@ static void cond_state_output(void *vthis, void *vcond)
 		rule_mid("--state ERROR-UNKNOWN-MASK");
 }
 
+static int cond_state_cmp(void *va, void *vb)
+{
+	cond_state_t *a = va;
+	cond_state_t *b = vb;
+
+	if (!a)
+		return 1;
+	else if (!b)
+		return -1;
+	else if (a->neg != b->neg)
+		return a->neg - b->neg;
+	else
+		return a->state - b->state;
+}
+
+static GTree *cond_state_group(Rule *rule, int idx)
+{
+	/* Divide the group into the largest common sub-groups */
+	GTree *tree = g_tree_new((GCompareFunc)cond_state_cmp);
+	for (; rule; rule = rule->next) {
+		if (!rule->cond[idx])
+			continue;
+		cond_iface_t *cond = rule->cond[idx];
+		gpointer value = g_tree_lookup(tree, cond);
+		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
+		g_tree_insert(tree, cond, GUINT_TO_POINTER(uval+1));
+	}
+
+	return tree;
+}
+
+
 #define COND_FUNC_FULL(name,this) cond_##name##_intersect, cond_##name##_output, cond_##name##_dup, cond_##name##_group, cond_##name##_cmp, this
 
 static const struct cond_operator_t cond_op[COND_NUM] = {
@@ -311,7 +343,7 @@ static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL, NULL},
 	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, NULL, NULL, NULL},
 	[COND_TCP_OPTION] = {0, cond_tcpopt_output, cond_tcpopt_dup, NULL, NULL, NULL},
-	[COND_MATCH_STATE] = {0, cond_state_output, cond_state_dup, NULL, NULL, NULL},
+	[COND_MATCH_STATE] = {0, cond_state_output, cond_state_dup, cond_state_group, cond_state_cmp, NULL},
 };
 
 
