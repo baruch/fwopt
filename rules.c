@@ -247,6 +247,24 @@ static void cond_tcpflags_output(void *vthis, void *vcond)
 	}
 }
 
+static int cond_tcpflags_cmp(void *va, void *vb)
+{
+	cond_tcpflags_t *a = va;
+	cond_tcpflags_t *b = vb;
+
+	if (!a)
+		return 1;
+	else if (!b)
+		return -1;
+	else if (a->neg != b->neg)
+		return a->neg - b->neg;
+	else if (a->mask != b->mask)
+		return a->mask - b->mask;
+	else
+		return a->comp - b->comp;
+}
+
+
 typedef struct {
 	uint16_t option;
 	uint16_t neg;
@@ -308,7 +326,7 @@ static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_PORT_SRC] = {0, cond_port_output, cond_port_dup, NULL, "--sport"},
 	[COND_PORT_DST] = {0, cond_port_output, cond_port_dup, NULL, "--dport"},
 	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL},
-	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, NULL, NULL},
+	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, cond_tcpflags_cmp, NULL},
 	[COND_TCP_OPTION] = {0, cond_tcpopt_output, cond_tcpopt_dup, NULL, NULL},
 	[COND_MATCH_STATE] = {0, cond_state_output, cond_state_dup, cond_state_cmp, NULL},
 };
