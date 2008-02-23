@@ -10,7 +10,7 @@
 * Version 0.2
   + Read "jump to chain" rules
   + Implement -V/--version
-  - Inline such chains into one big initial group
+  + Inline such chains into one big initial group
   - Group rules on
     + Output interface
     - source ip
@@ -18,3 +18,4 @@
     - protocol
     - source port
     - dest port
+	+ flow state tracking
