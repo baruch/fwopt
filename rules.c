@@ -55,7 +55,6 @@ struct cond_operator_t {
 	int (*intersect)(Rule *rule, int idx, void * cond_from);
 	void (*output)(void *this, void *cond);
 	void *(*dup)(void *ctx, void *cond);
-	GTree *(*group)(Rule *rule, int idx);
 	int (*cmp)(void *cond_a, void *cond_b);
 
 	void *this;
@@ -118,22 +117,6 @@ static int cond_iface_cmp(void *va, void *vb)
 		return a->negate - b->negate;
 	else
 		return strncmp(a->name, b->name, IFACE_LEN);
-}
-
-static GTree *cond_iface_group(Rule *rule, int idx)
-{
-	/* Divide the group into the largest common sub-groups */
-	GTree *tree = g_tree_new((GCompareFunc)cond_iface_cmp);
-	for (; rule; rule = rule->next) {
-		if (!rule->cond[idx])
-			continue;
-		cond_iface_t *cond = rule->cond[idx];
-		gpointer value = g_tree_lookup(tree, cond);
-		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
-		g_tree_insert(tree, cond, GUINT_TO_POINTER(uval+1));
-	}
-
-	return tree;
 }
 
 static int cond_iface_intersect(Rule *rule, int idx, void *vcond_from)
@@ -313,37 +296,21 @@ static int cond_state_cmp(void *va, void *vb)
 		return a->state - b->state;
 }
 
-static GTree *cond_state_group(Rule *rule, int idx)
-{
-	/* Divide the group into the largest common sub-groups */
-	GTree *tree = g_tree_new((GCompareFunc)cond_state_cmp);
-	for (; rule; rule = rule->next) {
-		if (!rule->cond[idx])
-			continue;
-		cond_iface_t *cond = rule->cond[idx];
-		gpointer value = g_tree_lookup(tree, cond);
-		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
-		g_tree_insert(tree, cond, GUINT_TO_POINTER(uval+1));
-	}
 
-	return tree;
-}
-
-
-#define COND_FUNC_FULL(name,this) cond_##name##_intersect, cond_##name##_output, cond_##name##_dup, cond_##name##_group, cond_##name##_cmp, this
+#define COND_FUNC_FULL(name,this) cond_##name##_intersect, cond_##name##_output, cond_##name##_dup, cond_##name##_cmp, this
 
 static const struct cond_operator_t cond_op[COND_NUM] = {
 	[COND_IFACE_IN] = {COND_FUNC_FULL(iface, "-i")},
 	[COND_IFACE_OUT] = {COND_FUNC_FULL(iface, "-o")},
-	[COND_PROTOCOL] = {cond_proto_intersect, cond_proto_output, cond_proto_dup, NULL, NULL, NULL},
-	[COND_ADDR_SRC] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--src"},
-	[COND_ADDR_DST] = {0, cond_addr_output, cond_addr_dup, NULL, NULL, "--dst"},
-	[COND_PORT_SRC] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--sport"},
-	[COND_PORT_DST] = {0, cond_port_output, cond_port_dup, NULL, NULL, "--dport"},
-	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL, NULL},
-	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, NULL, NULL, NULL},
-	[COND_TCP_OPTION] = {0, cond_tcpopt_output, cond_tcpopt_dup, NULL, NULL, NULL},
-	[COND_MATCH_STATE] = {0, cond_state_output, cond_state_dup, cond_state_group, cond_state_cmp, NULL},
+	[COND_PROTOCOL] = {cond_proto_intersect, cond_proto_output, cond_proto_dup, NULL, NULL},
+	[COND_ADDR_SRC] = {0, cond_addr_output, cond_addr_dup, NULL, "--src"},
+	[COND_ADDR_DST] = {0, cond_addr_output, cond_addr_dup, NULL, "--dst"},
+	[COND_PORT_SRC] = {0, cond_port_output, cond_port_dup, NULL, "--sport"},
+	[COND_PORT_DST] = {0, cond_port_output, cond_port_dup, NULL, "--dport"},
+	[COND_ICMP_TYPE] = {0, cond_icmptype_output, cond_icmptype_dup, NULL, NULL},
+	[COND_TCP_FLAGS] = {0, cond_tcpflags_output, cond_tcpflags_dup, NULL, NULL},
+	[COND_TCP_OPTION] = {0, cond_tcpopt_output, cond_tcpopt_dup, NULL, NULL},
+	[COND_MATCH_STATE] = {0, cond_state_output, cond_state_dup, cond_state_cmp, NULL},
 };
 
 
@@ -1119,6 +1086,22 @@ static gboolean max_val(gpointer key, gpointer value, gpointer data)
 	return FALSE;
 }
 
+static GTree *group_rules(Rule *rule, int idx)
+{
+	/* Divide the group into the largest common sub-groups */
+	GTree *tree = g_tree_new((GCompareFunc)cond_op[idx].cmp);
+	for (; rule; rule = rule->next) {
+		if (!rule->cond[idx])
+			continue;
+		cond_iface_t *cond = rule->cond[idx];
+		gpointer value = g_tree_lookup(tree, cond);
+		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
+		g_tree_insert(tree, cond, GUINT_TO_POINTER(uval+1));
+	}
+
+	return tree;
+}
+
 void optimize_group(Group *group)
 {
 	if (!group)
@@ -1131,7 +1114,7 @@ void optimize_group(Group *group)
 
 	int i;
 	for (i = 0; i < COND_NUM; i++) {
-		GTree *tree = cond_op[i].group ? cond_op[i].group(group->rules, i) : NULL;
+		GTree *tree = cond_op[i].cmp ? group_rules(group->rules, i) : NULL;
 		if (tree) {
 			maxer.test_idx = i;
 			g_tree_foreach(tree, max_val, &maxer);
