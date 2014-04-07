@@ -1050,95 +1050,95 @@ typedef struct GroupRule {
 	struct Group group;
 } GroupRule;
 
-static int can_merge_group_and_rule(Group *group, Rule *rule)
+static inline int can_group_rule(Rule *first_rule, Rule *last_rule, Rule *checked_rule)
 {
-	return group && group->action == rule->action;
-}
-
-static Group *chain_to_group(RuleTree *rule_tree, Chain *chain)
-{
-	Group *head = NULL;
-	Group **next = &head;
-	Group *group = NULL;
-	Rule *rule;
-
-	for (rule = chain->rules; rule; rule = rule->next) {
-		/* Do we need to open a new group? */
-		if (!can_merge_group_and_rule(group, rule)) {
-			group = talloc_zero(head, Group);
-			group->action = rule->action;
-			group->last_rule = &group->rules;
-
-			/* Link the group into the list */
-			*next = group;
-			next = &group->next;
-		}
-
-		/* Add the rule into this group */
-		Rule *newrule = rule_dup(group, rule);
-		*group->last_rule = newrule;
-		group->last_rule = &newrule->next;
-	}
-
-	return head;
+	assert(first_rule);
+	assert(last_rule);
+	assert(checked_rule);
+	return first_rule->action == checked_rule->action && last_rule->action == checked_rule->action;
 }
 
 struct max_val_t {
 	gpointer key;
 	unsigned value;
 	int idx;
-	int test_idx;
 };
 
-static gboolean max_val(gpointer key, gpointer value, gpointer data)
+struct ext_rule_t {
+	struct ext_rule_t *next;
+	Rule *rule;
+};
+
+struct tree_val_t {
+	unsigned value;
+	struct ext_rule_t *head;
+	struct ext_rule_t **tail;
+};
+
+static int g_tree_talloc_array_destroy(void *array)
 {
-	struct max_val_t *maxer = (struct max_val_t *)data;
-	unsigned uval = GPOINTER_TO_UINT(value);
-
-	if (uval > maxer->value) {
-		maxer->key = key;
-		maxer->value = uval;
-		maxer->idx = maxer->test_idx;
+	GTree **tree = array;
+	int idx;
+	for (idx = 0; idx < COND_NUM; idx++) {
+		if (tree[idx])
+			g_tree_destroy(tree[idx]);
 	}
-
-	return FALSE;
+	return 0;
 }
 
-static GTree *group_rules(Rule *rule, int idx)
+static void group_rules(Rule *rule, struct max_val_t *maxer)
 {
-	/* Divide the group into the largest common sub-groups */
-	GTree *tree = g_tree_new((GCompareFunc)cond_op[idx].cmp);
+	GTree **tree = talloc_array(NULL, GTree*, COND_NUM);
+	talloc_set_destructor((void*)tree, g_tree_talloc_array_destroy);
+
+	int idx;
+
+	for (idx = 0; idx < COND_NUM; idx++) {
+		if (cond_op[idx].cmp)
+			tree[idx] = g_tree_new((GCompareFunc)cond_op[idx].cmp);
+	}
+
+	/* Find the largest set of rules with a common condition that can be moved */
 	for (; rule; rule = rule->next) {
-		if (!rule->cond[idx])
-			continue;
-		cond_iface_t *cond = rule->cond[idx];
-		gpointer value = g_tree_lookup(tree, cond);
-		unsigned uval = value ? GPOINTER_TO_UINT(value) : 0;
-		g_tree_insert(tree, cond, GUINT_TO_POINTER(uval+1));
+		for (idx = 0; idx < COND_NUM; idx++) {
+			if (!cond_op[idx].cmp || !rule->cond[idx])
+				continue;
+			void *cond = rule->cond[idx];
+			struct tree_val_t *value = g_tree_lookup(tree[idx], cond);
+			if (!value) {
+				value = talloc_zero(tree, struct tree_val_t);
+				value->value = 1;
+				value->tail = &value->head;
+				g_tree_insert(tree[idx], cond, value);
+				continue;
+			}
+
+
+				value->value++;
+
+			*value->tail = talloc(tree, struct ext_rule_t);
+			(*value->tail)->rule = rule;
+			value->tail = &(*value->tail)->next;
+
+			if (value->value > maxer->value) {
+				maxer->key = cond;
+				maxer->value = value->value;
+				maxer->idx = idx;
+			}
+		}
 	}
 
-	return tree;
+	talloc_free(tree);
 }
 
-void optimize_group(Group *group)
+void optimize_chain(RuleTree *tree, Chain *chain)
 {
-	if (!group)
-		return;
-
 	/* @todo Remove duplicate rules, also remove rules that are a subset of a previous rule. */
 
 	/* Collate all common conditions to be able to find the maximum */
-	struct max_val_t maxer = { 0, 0, -1, -1 };
+	struct max_val_t maxer = { 0, 0, -1 };
 
-	int i;
-	for (i = 0; i < COND_NUM; i++) {
-		GTree *tree = cond_op[i].cmp ? group_rules(group->rules, i) : NULL;
-		if (tree) {
-			maxer.test_idx = i;
-			g_tree_foreach(tree, max_val, &maxer);
-			g_tree_destroy(tree);
-		}
-	}
+	group_rules(chain->rules, &maxer);
 
 	if (maxer.value > 1) {
 		/* Make a group out of this */
@@ -1173,87 +1173,16 @@ void optimize_group(Group *group)
 		*pgrule = grule;
 
 		/* Optimize the rest of the group again */
-		optimize_group(group);
+		optimize_chain(tree, chain);
 	}
-}
-
-void optimize_groups(Group *head)
-{
-	Group *tmp;
-
-	for (tmp = head; tmp; tmp = tmp->next)
-		optimize_group(tmp);
-}
-
-void group_to_chains(Group *group, RuleTree *tree, Chain *base_chain);
-
-void group_rule_to_chain(GroupRule *grule, RuleTree *tree, Chain *base_chain)
-{
-	static unsigned chain_id = 1;
-	char chain_name[CHAIN_LEN];
-
-	snprintf(chain_name, CHAIN_LEN, "chain_%u", chain_id++);
-
-	Chain *chain = rules_new_chain_int(tree, chain_name);
-
-	Rule *rule = rule_dup(NULL, &grule->rule);
-	rule->action = RULE_JUMP;
-	rule->jump_chain = talloc_strdup(rule, chain_name);
-	chain_add_rule(base_chain, rule);
-	talloc_unlink(NULL, rule);
-
-	group_to_chains(&grule->group, tree, chain);
-}
-
-void group_to_chains(Group *group, RuleTree *tree, Chain *base_chain)
-{
-	if (!group)
-		return;
-
-	/* Add the ungrouped rules */
-	while (group->rules) {
-		Rule *tmp = group->rules;
-		group->rules = tmp->next;
-		tmp->next = NULL;
-
-		chain_add_rule(base_chain, tmp);
-	}
-
-	/* Add the grouped rules */
-	GroupRule *grule;
-	for (grule = group->groups; grule; grule = grule->next)
-		group_rule_to_chain(grule, tree, base_chain);
-}
-
-void groups_to_chains(Group *head, RuleTree *tree, Chain *base_chain)
-{
-	Group *tmp;
-	for (tmp = head; tmp; tmp = tmp->next)
-		group_to_chains(tmp, tree, base_chain);
 }
 
 void rules_optimize(RuleTree *rule_tree)
 {
-	/* Create the new groups */
-	Group *input_group = chain_to_group(rule_tree, rule_tree->input);
-	Group *output_group = chain_to_group(rule_tree, rule_tree->output);
-	Group *forward_group = chain_to_group(rule_tree, rule_tree->forward);
+	int i;
 
-	/* Clear the old rules */
-	rules_clear(rule_tree);
-
-	/* Optimize and render groups into rules */
-	optimize_groups(input_group);
-	groups_to_chains(input_group, rule_tree, rule_tree->input);
-	talloc_free(input_group);
-	
-	optimize_groups(output_group);
-	groups_to_chains(output_group, rule_tree, rule_tree->output);
-	talloc_free(output_group);
-
-	optimize_groups(forward_group);
-	groups_to_chains(forward_group, rule_tree, rule_tree->forward);
-	talloc_free(forward_group);
+	for (i = rule_tree->num_chains-1; i > 0; i--)
+		optimize_chain(rule_tree, rule_tree->chains[i]);
 }
 
 static void chain_linearize(RuleTree *tree, Chain *start_chain)
