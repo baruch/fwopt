@@ -1,0 +1,1 @@
+iptables -A INPUT --src 1.2.3.4 -p icmp -j ACCEPT
